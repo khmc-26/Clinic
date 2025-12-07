@@ -65,9 +65,9 @@ export default function HeroSection() {
             <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-gradient-to-br from-primary/20 to-secondary/20 aspect-[4/5]">
               <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent flex items-end p-8">
                 <div className="text-white">
-                  <h3 className="text-2xl font-bold">{process.env.DOCTOR_NAME}</h3>
-                  <p className="text-primary-light">{process.env.DOCTOR_QUALIFICATION}</p>
-                  <p className="text-gray-300">{process.env.DOCTOR_EXPERIENCE}+ Years Experience</p>
+                  <h3 className="text-2xl font-bold">{process.env.NEXT_PUBLIC_DOCTOR_NAME}</h3>
+                  <p className="text-primary-light">{process.env.NEXT_PUBLIC_DOCTOR_QUALIFICATION}</p>
+                  <p className="text-gray-300">{process.env.NEXT_PUBLIC_DOCTOR_EXPERIENCE}+ Years Experience</p>
                 </div>
               </div>
             </div>

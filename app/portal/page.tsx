@@ -17,16 +17,15 @@ export default function PortalPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    // Check if user just verified magic link
-    const urlParams = new URLSearchParams(window.location.search)
-    const tokenVerified = urlParams.get('tokenVerified')
-    
-    if (tokenVerified === 'true') {
-      alert('Email verified! Please sign in with Google or try again.')
-      // Clear the URL parameter
-      window.history.replaceState({}, '', '/portal')
-    }
-  }, [])
+  const urlParams = new URLSearchParams(window.location.search)
+  const tokenVerified = urlParams.get('tokenVerified')
+  
+  if (tokenVerified === 'true') {
+    // Optional: show a toast instead of alert
+    console.log('Email verified successfully')
+    window.history.replaceState({}, '', '/portal')
+  }
+}, [])
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault()

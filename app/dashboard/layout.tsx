@@ -1,11 +1,9 @@
-// app/dashboard/layout.tsx
 'use client'
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import DashboardNav from '@/components/dashboard/dashboard-nav'
-import { Loader2 } from 'lucide-react'
 
 export default function DashboardLayout({
   children,
@@ -14,40 +12,55 @@ export default function DashboardLayout({
 }) {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const [isChecking, setIsChecking] = useState(true)
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/portal')
+    console.log('🔐 Dashboard Layout - Session status:', status)
+    console.log('🔐 Dashboard Layout - Session data:', session)
+    
+    if (status === 'loading') {
+      return
     }
-  }, [status, router])
+    
+    if (!session) {
+      console.log('🔐 No session, redirecting to /portal')
+      router.push('/portal')
+      return
+    }
+    
+    if (session.user?.role !== 'DOCTOR') {
+      console.log('🔐 User role is not DOCTOR. Role:', session.user?.role)
+      console.log('🔐 User email:', session.user?.email)
+      router.push('/portal')
+      return
+    }
+    
+    console.log('🔐 Access granted - User is doctor')
+    setIsChecking(false)
+  }, [session, status, router])
 
-  if (status === 'loading') {
+  if (status === 'loading' || isChecking) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <p className="mt-4 text-gray-600">Loading dashboard...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-gray-600">Verifying doctor access...</p>
+          <p className="text-sm text-gray-500 mt-2">
+            Session status: {status}<br />
+            Role: {session?.user?.role || 'none'}
+          </p>
         </div>
       </div>
     )
   }
-
-  if (session?.user?.role !== 'DOCTOR' && session?.user?.role !== 'ADMIN') {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
-          <p className="text-gray-600">You don't have permission to access this page.</p>
-        </div>
-      </div>
-    )
-  }
-
+  
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardNav />
-      <div className="pt-16">
-        {children}
+      <div className="pt-16 md:pt-28">
+        <div className="container px-4 py-8">
+          {children}
+        </div>
       </div>
     </div>
   )
