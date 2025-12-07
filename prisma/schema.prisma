@@ -1,0 +1,167 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  name          String?
+  phone         String?
+  role          String    @default("PATIENT")
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  patient      Patient?
+  doctor       Doctor?
+  sessions     Session[]
+  accounts     Account[]
+
+  @@index([email])
+}
+
+model Patient {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  age              Int?
+  gender           String?
+  address          String?
+  medicalHistory   String?  @db.Text
+  allergies        String?
+  emergencyContact String?
+  bloodGroup       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  appointments     Appointment[]
+
+  @@index([userId])
+}
+
+model Doctor {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialization  String   @default("Homoeopathy")
+  qualifications  String[] 
+  experience      Int      @default(15)
+  consultationFee Int      @default(300)
+  bio             String?  @db.Text
+  achievements    String[] 
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  appointments    Appointment[]
+  availabilities  DoctorAvailability[]
+
+  @@index([userId])
+}
+
+model DoctorAvailability {
+  id         String   @id @default(uuid())
+  doctorId   String
+  doctor     Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  dayOfWeek  Int      // 0=Sunday, 1=Monday, etc.
+  startTime  String   // "09:00"
+  endTime    String   // "17:00"
+  isActive   Boolean  @default(true)
+  slotDuration Int    @default(30) // minutes
+  maxPatients Int     @default(1)
+  createdAt  DateTime @default(now())
+
+  @@unique([doctorId, dayOfWeek])
+  @@index([doctorId, dayOfWeek])
+}
+
+model Appointment {
+  id              String   @id @default(uuid())
+  patientId       String
+  doctorId        String
+  patient         Patient  @relation(fields: [patientId], references: [id])
+  doctor          Doctor   @relation(fields: [doctorId], references: [id])
+  
+  appointmentDate DateTime
+  appointmentType String   @default("IN_PERSON")
+  status          String   @default("PENDING")
+  serviceType     String   @default("GENERAL_CONSULTATION")
+  
+  symptoms        String?  @db.Text
+  previousTreatment String? @db.Text
+  duration        Int      @default(30)
+  
+  googleMeetLink  String?
+  googleEventId   String?
+  
+  diagnosis       String?  @db.Text
+  treatmentPlan   String?  @db.Text
+  recommendations String?  @db.Text
+  
+  confirmedAt     DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  reminderSentAt  DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([appointmentDate])
+  @@index([status])
+  @@index([patientId])
+  @@index([doctorId])
+}
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@index([identifier])
+}
+
+model ContactMessage {
+  id         String   @id @default(uuid())
+  name       String
+  email      String
+  phone      String?
+  subject    String
+  message    String   @db.Text
+  status     String   @default("unread")
+  repliedAt  DateTime?
+  createdAt  DateTime @default(now())
+}
