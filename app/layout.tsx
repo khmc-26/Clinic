@@ -4,7 +4,7 @@ import { Poppins } from 'next/font/google'
 import './globals.css'
 import Navbar from '@/components/layout/navbar'
 import Footer from '@/components/layout/footer'
-import { Providers } from './providers' // ADD THIS IMPORT
+import { Providers } from './providers'
 
 const poppins = Poppins({
   weight: ['300', '400', '500', '600', '700'],
@@ -26,17 +26,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: {
-  children: React.ReactNode
-}) {
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <html lang="en" className="scroll-smooth">
-      <body className={`${poppins.className} antialiased`}>
-        <Providers> {/* WRAP WITH PROVIDERS */}
+    <html lang="en">
+      <body className={poppins.className}> {/* Changed from inter to poppins */}
+        <Providers>
           <Navbar />
-          <main className="min-h-screen">
-            {children}
-          </main>
+          <main>{children}</main>
           <Footer />
         </Providers>
       </body>

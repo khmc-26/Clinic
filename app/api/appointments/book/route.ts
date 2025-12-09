@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { appointmentSchema } from '@/lib/validations/appointment'
 import { sendAppointmentConfirmationEmail } from '@/lib/email'
-import { createCalendarEvent, generateRealGoogleMeet } from '@/lib/google-calendar' // FIXED IMPORT
+import { createCalendarEvent, generateRealGoogleMeet } from '@/lib/google-calendar'
 import { z } from 'zod'
 
 export async function POST(request: NextRequest) {
@@ -71,76 +71,113 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ==================== GET OR CREATE/UPDATE PATIENT ====================
-    let patient = await prisma.patient.findFirst({
-      where: {
-        user: {
-          email: validatedData.patientEmail
-        }
-      },
-      include: { user: true }
+    // ==================== FIXED: GET OR CREATE USER/PATIENT ====================
+    console.log('Processing patient for email:', validatedData.patientEmail)
+    
+    // 1. First, find user (whether they have patient record or not)
+    let user = await prisma.user.findUnique({
+      where: { email: validatedData.patientEmail },
+      include: { patient: true }
     })
 
-    console.log('Found patient:', patient)
+    console.log('Found user:', user?.id, 'Has patient record:', !!user?.patient)
 
-    if (patient) {
-      // UPDATE existing patient's name and info
+    let patient;
+    if (user && user.patient) {
+      // CASE 1: User exists AND has patient record
       console.log('Updating existing patient info...')
+      
+      // Update user info
       await prisma.user.update({
-        where: { id: patient.userId },
+        where: { id: user.id },
         data: {
           name: validatedData.patientName,
           phone: validatedData.patientPhone,
         }
       })
       
+      // Update patient info
       await prisma.patient.update({
-        where: { id: patient.id },
+        where: { id: user.patient.id },
         data: {
           age: validatedData.patientAge,
           gender: validatedData.patientGender,
         }
       })
       
-      // Refresh patient data
-      patient = await prisma.patient.findFirst({
-        where: { id: patient.id },
+      // Get updated patient
+      patient = await prisma.patient.findUnique({
+        where: { id: user.patient.id },
         include: { user: true }
       })
       
-      console.log('Updated patient:', patient)
+      console.log('Updated patient:', patient?.id)
+      
+    } else if (user && !user.patient) {
+      // CASE 2: User exists but NO patient record (shouldn't happen but handle it)
+      console.log('User exists but no patient record, creating patient...')
+      
+      // Create patient record for existing user
+      patient = await prisma.patient.create({
+        data: {
+          userId: user.id,
+          age: validatedData.patientAge,
+          gender: validatedData.patientGender,
+        },
+        include: { user: true }
+      })
+      
+      // Update user info
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          name: validatedData.patientName,
+          phone: validatedData.patientPhone,
+        }
+      })
+      
+      console.log('Created patient for existing user:', patient.id)
+      
     } else {
-      console.log('Creating new patient...')
-      // Create new user and patient
-      const user = await prisma.user.create({
+      // CASE 3: No user exists - create both user and patient
+      console.log('Creating new user and patient...')
+      
+      // Create user first
+      user = await prisma.user.create({
         data: {
           email: validatedData.patientEmail,
           name: validatedData.patientName,
           phone: validatedData.patientPhone,
           role: 'PATIENT',
           emailVerified: new Date(),
-          patient: {
-            create: {
-              age: validatedData.patientAge,
-              gender: validatedData.patientGender,
-            }
-          }
-        },
-        include: { patient: true }
+        }
       })
       
-      // Get the newly created patient with user relation
-      patient = await prisma.patient.findFirst({
-        where: { userId: user.id },
+      console.log('Created user:', user.id)
+      
+      // Create patient
+      patient = await prisma.patient.create({
+        data: {
+          userId: user.id,
+          age: validatedData.patientAge,
+          gender: validatedData.patientGender,
+        },
         include: { user: true }
       })
       
-      console.log('Created patient:', patient?.id)
+      console.log('Created patient:', patient.id)
     }
 
     if (!patient) {
       throw new Error('Failed to create or find patient')
     }
+
+    console.log('Final patient object:', {
+      id: patient.id,
+      userId: patient.userId,
+      email: patient.user?.email,
+      name: patient.user?.name
+    })
 
     // ==================== CREATE APPOINTMENT ====================
     const appointment = await prisma.appointment.create({
@@ -167,7 +204,7 @@ export async function POST(request: NextRequest) {
     // ALWAYS create calendar event for BOTH online and in-person appointments
     try {
       console.log('Creating Google Calendar event...')
-      const calendarResult = await createCalendarEvent(appointment.id) // FIXED FUNCTION CALL
+      const calendarResult = await createCalendarEvent(appointment.id)
       googleEventId = calendarResult.eventId
       googleEventLink = calendarResult.eventLink
       googleMeetLink = calendarResult.meetLink || googleMeetLink
@@ -275,6 +312,18 @@ export async function POST(request: NextRequest) {
           }))
         },
         { status: 400 }
+      )
+    }
+
+    // Handle Prisma unique constraint error specifically
+    if (error.code === 'P2002') {
+      console.error('Duplicate email error - user already exists')
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'An account with this email already exists. Please use a different email or contact support.' 
+        },
+        { status: 409 }
       )
     }
 

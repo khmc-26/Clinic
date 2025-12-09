@@ -1,5 +1,6 @@
-// components/layout/footer.tsx
-import { Phone, Mail, MapPin, Clock, Facebook, Instagram, Youtube } from 'lucide-react'
+'use client'
+
+import { Phone, Mail, MapPin, Clock, Facebook, Instagram, Youtube, Lock } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Footer() {
@@ -57,15 +58,15 @@ export default function Footer() {
             <div className="space-y-3">
               <div className="flex items-center space-x-3">
                 <Phone className="h-5 w-5 text-primary" />
-                <span className="text-gray-300">{process.env.NEXT_PUBLIC_CLINIC_PHONE}</span>
+                <span className="text-gray-300">{process.env.NEXT_PUBLIC_CLINIC_PHONE || '+91 9495258572'}</span>
               </div>
               <div className="flex items-center space-x-3">
                 <Mail className="h-5 w-5 text-primary" />
-                <span className="text-gray-300">{process.env.NEXT_PUBLIC_CLINIC_EMAIL}</span>
+                <span className="text-gray-300">{process.env.NEXT_PUBLIC_CLINIC_EMAIL || 'drkavithahc@gmail.com'}</span>
               </div>
               <div className="flex items-start space-x-3">
                 <MapPin className="h-5 w-5 text-primary mt-1" />
-                <span className="text-gray-300">{process.env.NEXT_PUBLIC_CLINIC_ADDRESS}</span>
+                <span className="text-gray-300">{process.env.NEXT_PUBLIC_CLINIC_ADDRESS || 'Homoe Medical Centre, Areekkad, Kozhikode, Kerala'}</span>
               </div>
               <div className="flex items-center space-x-3">
                 <Clock className="h-5 w-5 text-primary" />
@@ -77,6 +78,25 @@ export default function Footer() {
 
         <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
           <p>© {new Date().getFullYear()} Dr. Kavitha Thomas Homoeopathic Clinic. All rights reserved.</p>
+          
+          {/* Doctor Access Link - DIRECT LINK, NO CONFIRMATION */}
+          <div className="mt-4">
+            <Link 
+              href="/doctor/login" 
+              className="inline-flex items-center text-xs hover:text-primary transition-colors"
+            >
+              <Lock className="h-3 w-3 mr-1" />
+              Doctor Access
+            </Link>
+            <span className="mx-2">•</span>
+            <Link href="/privacy" className="text-xs hover:text-primary transition-colors">
+              Privacy Policy
+            </Link>
+            <span className="mx-2">•</span>
+            <Link href="/terms" className="text-xs hover:text-primary transition-colors">
+              Terms of Service
+            </Link>
+          </div>
         </div>
       </div>
     </footer>

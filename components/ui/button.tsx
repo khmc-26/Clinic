@@ -1,6 +1,5 @@
-// components/ui/button.tsx
-
-'use client' // ADD THIS AT THE TOP
+// components/ui/button.tsx - UPDATED
+'use client'
 
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
@@ -44,16 +43,31 @@ export interface ButtonProps
   loading?: boolean
   leftIcon?: React.ReactNode
   rightIcon?: React.ReactNode
+  asChild?: boolean // Add this to accept but ignore asChild
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, fullWidth, loading, leftIcon, rightIcon, children, ...props }, ref) => {
+  ({ 
+    className, 
+    variant, 
+    size, 
+    fullWidth, 
+    loading, 
+    leftIcon, 
+    rightIcon, 
+    asChild, // Destructure asChild
+    children, 
+    ...props 
+  }, ref) => {
+    // Filter out asChild from props to prevent passing to DOM
+    const { asChild: _, ...buttonProps } = props as any
+    
     return (
       <button
         className={cn(buttonVariants({ variant, size, fullWidth, className }))}
         ref={ref}
         disabled={loading || props.disabled}
-        {...props}
+        {...buttonProps}
       >
         {loading && (
           <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24">

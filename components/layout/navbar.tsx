@@ -1,4 +1,3 @@
-// components/layout/navbar.tsx
 'use client'
 
 import { useState } from 'react'
@@ -19,7 +18,7 @@ const navItems = [
 
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
       <div className="container flex h-16 items-center justify-between">
@@ -35,20 +34,23 @@ export default function Navbar() {
         </Link>
 
         {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center space-x-6">
-          {navItems.slice(0, 4).map((item) => (
+        <nav className="hidden lg:flex items-center space-x-1">
+          {navItems.map((item) => (
             <Link
               key={item.name}
               href={item.href}
-              className="text-sm font-medium text-gray-700 hover:text-primary transition-colors"
+              className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary transition-colors rounded-md hover:bg-gray-50"
             >
               {item.name}
             </Link>
           ))}
-          <div className="flex items-center space-x-3">
+          
+          <div className="flex items-center space-x-3 ml-4">
             <Button variant="outline" size="sm" className="gap-2">
               <Phone className="h-4 w-4" />
-              {process.env.NEXT_PUBLIC_CLINIC_PHONE || '9495258572'}
+              <a href={`tel:${process.env.NEXT_PUBLIC_CLINIC_PHONE || '+919495258572'}`}>
+                Call Now
+              </a>
             </Button>
             <Link href="/book">
               <Button size="sm" className="gap-2">
@@ -61,7 +63,7 @@ export default function Navbar() {
 
         {/* Mobile menu button */}
         <button 
-          className="md:hidden"
+          className="lg:hidden"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
         >
           {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -70,25 +72,28 @@ export default function Navbar() {
 
       {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t">
+        <div className="lg:hidden border-t">
           <div className="container py-4">
-            <div className="space-y-4">
+            <div className="space-y-2">
               {navItems.map((item) => (
                 <Link
                   key={item.name}
                   href={item.href}
-                  className="block py-2 text-sm font-medium text-gray-700 hover:text-primary transition-colors"
+                  className="block py-2 px-3 text-sm font-medium text-gray-700 hover:text-primary hover:bg-gray-50 transition-colors rounded-md"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   {item.name}
                 </Link>
               ))}
+              
               <div className="pt-4 space-y-3">
                 <Button variant="outline" className="w-full gap-2">
                   <Phone className="h-4 w-4" />
-                  {process.env.NEXT_PUBLIC_CLINIC_PHONE || '9495258572'}
+                  <a href={`tel:${process.env.NEXT_PUBLIC_CLINIC_PHONE || '+919495258572'}`}>
+                    {process.env.NEXT_PUBLIC_CLINIC_PHONE || '+91 9495258572'}
+                  </a>
                 </Button>
-                <Link href="/book" className="block">
+                <Link href="/book" className="block" onClick={() => setMobileMenuOpen(false)}>
                   <Button className="w-full gap-2">
                     <Calendar className="h-4 w-4" />
                     Book Appointment

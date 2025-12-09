@@ -6,10 +6,7 @@ import { ReactNode } from 'react'
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
-    <SessionProvider
-      refetchInterval={0}
-      refetchOnWindowFocus={false}
-    >
+    <SessionProvider>
       {children}
     </SessionProvider>
   )
