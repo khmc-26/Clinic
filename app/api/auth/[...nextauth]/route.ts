@@ -258,6 +258,7 @@ export const authOptions: NextAuthOptions = {
         token.name = user.name
         token.role = (user as any).role
         token.isDoctor = (user as any).isDoctor
+        token.isAdmin = user.role === 'ADMIN'  // ADD THIS LINE
       }
 
       // For security, only set isDoctor if we have user object or can verify from DB
@@ -274,6 +275,7 @@ export const authOptions: NextAuthOptions = {
         if (doctor) {
           token.isDoctor = true
           token.role = doctor.isAdmin ? 'ADMIN' : 'DOCTOR'
+          token.isAdmin = doctor.isAdmin  // ADD THIS LINE
         }
       }
 
@@ -284,7 +286,8 @@ export const authOptions: NextAuthOptions = {
       console.log('🔐 JWT token:', { 
         email: token.email, 
         isDoctor: token.isDoctor,
-        role: token.role 
+        role: token.role, 
+        isAdmin: token.isAdmin  // ADD THIS LINE
       })
 
       return token
@@ -297,7 +300,7 @@ export const authOptions: NextAuthOptions = {
         session.user.name = token.name as string
         session.user.role = token.role as string
         session.user.isDoctor = token.isDoctor as boolean
-        
+        session.user.isAdmin = token.isAdmin as boolean  // ADD THIS LINE
         // Final verification for admin doctor
         if (session.user.email === 'drkavithahc@gmail.com' && !session.user.isDoctor) {
           const doctor = await prisma.doctor.findFirst({
@@ -311,6 +314,7 @@ export const authOptions: NextAuthOptions = {
           if (doctor) {
             session.user.isDoctor = true
             session.user.role = doctor.isAdmin ? 'ADMIN' : 'DOCTOR'
+            session.user.isAdmin = doctor.isAdmin  // ADD THIS LINE
           }
         }
       }
@@ -318,7 +322,8 @@ export const authOptions: NextAuthOptions = {
       console.log('🔐 Session user:', { 
         email: session.user?.email, 
         isDoctor: session.user?.isDoctor,
-        role: session.user?.role 
+        role: session.user?.role,
+        isAdmin: session.user?.isAdmin  // ADD THIS LINE 
       })
 
       return session

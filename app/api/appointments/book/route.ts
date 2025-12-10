@@ -75,21 +75,21 @@ export async function POST(request: NextRequest) {
     console.log('Processing patient for email:', validatedData.patientEmail)
     
     // 1. First, find user (whether they have patient record or not)
-    let user = await prisma.user.findUnique({
+    const existingUser = await prisma.user.findUnique({
       where: { email: validatedData.patientEmail },
       include: { patient: true }
     })
 
-    console.log('Found user:', user?.id, 'Has patient record:', !!user?.patient)
+    console.log('Found user:', existingUser?.id, 'Has patient record:', !!existingUser?.patient)
 
     let patient;
-    if (user && user.patient) {
+    if (existingUser && existingUser.patient) {
       // CASE 1: User exists AND has patient record
       console.log('Updating existing patient info...')
       
       // Update user info
       await prisma.user.update({
-        where: { id: user.id },
+        where: { id: existingUser.id },
         data: {
           name: validatedData.patientName,
           phone: validatedData.patientPhone,
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
       
       // Update patient info
       await prisma.patient.update({
-        where: { id: user.patient.id },
+        where: { id: existingUser.patient.id },
         data: {
           age: validatedData.patientAge,
           gender: validatedData.patientGender,
@@ -107,20 +107,20 @@ export async function POST(request: NextRequest) {
       
       // Get updated patient
       patient = await prisma.patient.findUnique({
-        where: { id: user.patient.id },
+        where: { id: existingUser.patient.id },
         include: { user: true }
       })
       
       console.log('Updated patient:', patient?.id)
       
-    } else if (user && !user.patient) {
+    } else if (existingUser && !existingUser.patient) {
       // CASE 2: User exists but NO patient record (shouldn't happen but handle it)
       console.log('User exists but no patient record, creating patient...')
       
       // Create patient record for existing user
       patient = await prisma.patient.create({
         data: {
-          userId: user.id,
+          userId: existingUser.id,
           age: validatedData.patientAge,
           gender: validatedData.patientGender,
         },
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
       
       // Update user info
       await prisma.user.update({
-        where: { id: user.id },
+        where: { id: existingUser.id },
         data: {
           name: validatedData.patientName,
           phone: validatedData.patientPhone,
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
       console.log('Creating new user and patient...')
       
       // Create user first
-      user = await prisma.user.create({
+      const newUser = await prisma.user.create({
         data: {
           email: validatedData.patientEmail,
           name: validatedData.patientName,
@@ -153,12 +153,12 @@ export async function POST(request: NextRequest) {
         }
       })
       
-      console.log('Created user:', user.id)
+      console.log('Created user:', newUser.id)
       
       // Create patient
       patient = await prisma.patient.create({
         data: {
-          userId: user.id,
+          userId: newUser.id,
           age: validatedData.patientAge,
           gender: validatedData.patientGender,
         },
@@ -251,8 +251,16 @@ export async function POST(request: NextRequest) {
     const fullAppointment = await prisma.appointment.findUnique({
       where: { id: appointment.id },
       include: {
-        patient: { include: { user: true } },
-        doctor: { include: { user: true } }
+        patient: { 
+          include: { 
+            user: true 
+          } 
+        },
+        doctor: { 
+          include: { 
+            user: true 
+          } 
+        }
       }
     })
 
@@ -306,7 +314,7 @@ export async function POST(request: NextRequest) {
         { 
           success: false,
           error: 'Validation failed', 
-          details: error.errors.map((e: any) => ({
+          details: error.issues.map((e: any) => ({
             path: e.path.join('.'),
             message: e.message
           }))

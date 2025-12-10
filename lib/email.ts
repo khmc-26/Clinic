@@ -170,6 +170,86 @@ export async function sendMagicLinkEmail(email: string, token: string) {
   }
 }
 
+// Add to lib/email.ts
+export async function sendDoctorInvitationEmail(
+  email: string, 
+  invitationUrl: string, 
+  specialization: string,
+  role: string
+) {
+  try {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Doctor Invitation</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #0E7C7B 0%, #2A5C82 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { padding: 30px; background: #f8fafc; border-radius: 0 0 10px 10px; }
+          .button { display: inline-block; background: #0E7C7B; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: 600; margin: 10px 0; }
+          .alert { background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin: 20px 0; color: #856404; }
+          .footer { text-align: center; margin-top: 30px; color: #718096; font-size: 14px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Doctor Invitation</h1>
+          <p>Dr. Kavitha Thomas Homoeopathic Clinic</p>
+        </div>
+        
+        <div class="content">
+          <p>Dear Doctor,</p>
+          
+          <p>You have been invited to join Dr. Kavitha Thomas Homoeopathic Clinic as a ${role === 'ADMIN' ? 'Admin Doctor' : 'Regular Doctor'}.</p>
+          
+          <p><strong>Specialization:</strong> ${specialization}</p>
+          
+          <div class="alert">
+            <strong>⚠️ Important:</strong> This invitation link will expire in 2 hours.
+          </div>
+          
+          <a href="${invitationUrl}" class="button">
+            Accept Invitation & Set Up Account
+          </a>
+          
+          <p>After accepting, you'll be able to:</p>
+          <ul>
+            <li>Set up your password</li>
+            <li>Complete your doctor profile</li>
+            <li>Set your availability schedule</li>
+            <li>Start seeing patients</li>
+          </ul>
+          
+          <p>If you didn't expect this invitation, please ignore this email.</p>
+          
+          <div class="footer">
+            <p>© ${new Date().getFullYear()} Dr. Kavitha Thomas Homoeopathic Clinic<br>
+            Phone: ${process.env.CLINIC_PHONE} | Email: ${process.env.CLINIC_EMAIL}</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `
+
+    const mailOptions = {
+      from: process.env.EMAIL_FROM,
+      to: email,
+      subject: `Invitation to Join Dr. Kavitha Thomas Clinic as ${role === 'ADMIN' ? 'Admin Doctor' : 'Doctor'}`,
+      html: html,
+    }
+
+    const info = await transporter.sendMail(mailOptions)
+    console.log('Doctor invitation email sent:', info.messageId)
+    return true
+  } catch (error) {
+    console.error('Failed to send doctor invitation email:', error)
+    return false
+  }
+}
+
 export async function sendEmail({ to, subject, html }: {
   to: string;
   subject: string;

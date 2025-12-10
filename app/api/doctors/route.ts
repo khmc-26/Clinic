@@ -45,8 +45,16 @@ export async function GET(request: NextRequest) {
           select: {
             id: true
           }
-        }
-      },
+        },
+        availabilities: {  // ADD THIS
+      select: {
+        dayOfWeek: true,
+        startTime: true,
+        endTime: true,
+        isActive: true
+      }
+    }
+  },
       orderBy: {
         createdAt: 'desc'
       }

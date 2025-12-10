@@ -40,25 +40,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if invitation already exists and is not expired
-    const existingInvitation = await prisma.doctorInvitation.findUnique({
-      where: { email }
-    })
+    // Check if invitation already exists and is not expired
+const existingInvitation = await prisma.doctorInvitation.findUnique({
+  where: { email }
+})
 
-    if (existingInvitation && existingInvitation.expiresAt > new Date()) {
-      return NextResponse.json(
-        { error: 'Invitation already sent and still valid' },
-        { status: 400 }
-      )
-    }
+// If invitation exists and is not expired, prevent sending new one
+if (existingInvitation && existingInvitation.expiresAt > new Date()) {
+  return NextResponse.json(
+    { error: 'Invitation already sent and still valid' },
+    { status: 400 }
+  )
+}
 
+// If invitation exists but is expired, delete it and allow new invitation
+if (existingInvitation && existingInvitation.expiresAt <= new Date()) {
+  await prisma.doctorInvitation.delete({
+    where: { email }
+  })
+}
     // Get the inviter doctor
     const inviterDoctor = await prisma.doctor.findFirst({
-      where: {
-        user: {
-          email: session.user.email
-        }
-      }
-    })
+  where: {
+    user: {
+      email: session.user.email || undefined  // Handle null
+    }
+  }
+})
 
     if (!inviterDoctor) {
       return NextResponse.json(

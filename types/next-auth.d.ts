@@ -11,6 +11,7 @@ declare module "next-auth" {
       role?: string
       phone?: string | null
       isDoctor?: boolean
+      isAdmin?: boolean  // ADD THIS LINE
     }
   }
   
@@ -20,6 +21,7 @@ declare module "next-auth" {
     name?: string | null
     role?: string
     isDoctor?: boolean
+    isAdmin?: boolean  // ADD THIS LINE
   }
 }
 
@@ -29,5 +31,6 @@ declare module "next-auth/jwt" {
     role?: string
     email?: string
     isDoctor?: boolean
+    isAdmin?: boolean  // ADD THIS LINE
   }
 }

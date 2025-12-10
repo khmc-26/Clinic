@@ -40,6 +40,12 @@ interface Doctor {
   createdAt: string
   appointments: { id: string }[]
   patientAssignments: { id: string }[]
+  availabilities: {  // ADD THIS
+    dayOfWeek: number
+    startTime: string
+    endTime: string
+    isActive: boolean
+  }[]
 }
 
 export default function DoctorsPage() {
@@ -62,18 +68,18 @@ export default function DoctorsPage() {
     fetchDoctors()
   }, [session, status, router])
 
-  const fetchDoctors = async () => {
-    try {
-      const response = await fetch('/api/doctors')
-      if (!response.ok) throw new Error('Failed to fetch doctors')
-      const data = await response.json()
-      setDoctors(data)
-    } catch (error) {
-      console.error('Error fetching doctors:', error)
-    } finally {
-      setLoading(false)
-    }
+ const fetchDoctors = async () => {
+  try {
+    const response = await fetch('/api/doctors')
+    if (!response.ok) throw new Error('Failed to fetch doctors')
+    const data = await response.json()
+    setDoctors(data)
+  } catch (error) {
+    console.error('Error fetching doctors:', error)
+  } finally {
+    setLoading(false)
   }
+}
 
   const handleInviteSuccess = () => {
     setShowInviteDialog(false)
