@@ -1,9 +1,10 @@
-// components/dashboard/dashboard-nav.tsx
+// components/dashboard/dashboard-nav.tsx - UPDATED
 'use client'
 
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { signOut } from 'next-auth/react'
 import { 
@@ -15,22 +16,38 @@ import {
   Menu, 
   X,
   LogOut,
-  Home
+  Home,
+  UserPlus,
+  UserCog
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const navItems = [
+const adminNavItems = [
   { href: '/dashboard', label: 'Overview', icon: Home },
   { href: '/dashboard/appointments', label: 'Appointments', icon: Calendar },
   { href: '/dashboard/patients', label: 'Patients', icon: Users },
   { href: '/dashboard/prescriptions', label: 'Prescriptions', icon: FileText },
+  { href: '/dashboard/doctors', label: 'Doctor Management', icon: UserCog },
   { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/dashboard/settings', label: 'Settings', icon: Settings },
+]
+
+const regularDoctorNavItems = [
+  { href: '/dashboard', label: 'Overview', icon: Home },
+  { href: '/dashboard/appointments', label: 'Appointments', icon: Calendar },
+  { href: '/dashboard/patients', label: 'Patients', icon: Users },
+  { href: '/dashboard/prescriptions', label: 'Prescriptions', icon: FileText },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ]
 
 export default function DashboardNav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const pathname = usePathname()
+  const { data: session } = useSession()
+
+  const isAdmin = session?.user?.isAdmin
+  const navItems = isAdmin ? adminNavItems : regularDoctorNavItems
+  const doctorName = session?.user?.name || 'Doctor'
 
   return (
     <>
@@ -52,16 +69,24 @@ export default function DashboardNav() {
               </div>
               <div>
                 <h1 className="font-bold">Doctor Dashboard</h1>
-                <p className="text-xs text-gray-500">Dr. Kavitha Thomas</p>
+                <p className="text-xs text-gray-500">{doctorName}</p>
               </div>
             </Link>
           </div>
 
           <div className="flex items-center space-x-4">
+            {isAdmin && (
+              <Link href="/dashboard/doctors/invite">
+                <Button size="sm" className="hidden md:flex">
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Invite Doctor
+                </Button>
+              </Link>
+            )}
             <Button
               variant="outline"
               size="sm"
-              onClick={() => signOut()}
+              onClick={() => signOut({ callbackUrl: '/' })}
               className="hidden md:flex"
             >
               <LogOut className="mr-2 h-4 w-4" />
@@ -79,13 +104,16 @@ export default function DashboardNav() {
         <nav className="hidden md:flex items-center px-4 border-t h-12">
           {navItems.map((item) => {
             const Icon = item.icon
+            const isActive = pathname === item.href || 
+              (item.href !== '/dashboard' && pathname.startsWith(item.href))
+            
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
                   "flex items-center space-x-2 px-4 h-12 text-sm font-medium border-b-2 transition-colors",
-                  pathname === item.href
+                  isActive
                     ? "border-primary text-primary"
                     : "border-transparent text-gray-600 hover:text-primary"
                 )}
@@ -120,6 +148,9 @@ export default function DashboardNav() {
             <nav className="space-y-2">
               {navItems.map((item) => {
                 const Icon = item.icon
+                const isActive = pathname === item.href || 
+                  (item.href !== '/dashboard' && pathname.startsWith(item.href))
+                
                 return (
                   <Link
                     key={item.href}
@@ -127,7 +158,7 @@ export default function DashboardNav() {
                     onClick={() => setMobileMenuOpen(false)}
                     className={cn(
                       "flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors",
-                      pathname === item.href
+                      isActive
                         ? "bg-primary/10 text-primary"
                         : "text-gray-700 hover:bg-gray-100"
                     )}
@@ -138,8 +169,19 @@ export default function DashboardNav() {
                 )
               })}
               
+              {isAdmin && (
+                <Link
+                  href="/dashboard/doctors/invite"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100"
+                >
+                  <UserPlus className="h-5 w-5" />
+                  <span>Invite Doctor</span>
+                </Link>
+              )}
+              
               <button
-                onClick={() => signOut()}
+                onClick={() => signOut({ callbackUrl: '/' })}
                 className="flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 w-full"
               >
                 <LogOut className="h-5 w-5" />

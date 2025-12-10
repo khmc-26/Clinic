@@ -1,4 +1,4 @@
-// prisma/schema.prisma
+// prisma/schema.prisma - FIXED VERSION
 generator client {
   provider = "prisma-client-js"
 }
@@ -14,16 +14,16 @@ model User {
   email         String    @unique
   name          String?
   phone         String?
-  role          String    @default("PATIENT")
+  role          String    @default("PATIENT") // PATIENT, DOCTOR, ADMIN
   emailVerified DateTime?
   image         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  patient      Patient?
-  doctor       Doctor?
-  sessions     Session[]
-  accounts     Account[]
+  patient  Patient?
+  doctor   Doctor?
+  sessions Session[]
+  accounts Account[]
 
   @@index([email])
 }
@@ -42,7 +42,10 @@ model Patient {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  appointments     Appointment[]
+  appointments  Appointment[]
+  assignments   PatientDoctorAssignment[]
+  referrals     PatientReferral[]
+  medicalEvents PatientMedicalEvent[]
 
   @@index([userId])
 }
@@ -52,65 +55,83 @@ model Doctor {
   userId          String   @unique
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   specialization  String   @default("Homoeopathy")
-  qualifications  String[] 
+  qualifications  String[]
   experience      Int      @default(15)
   consultationFee Int      @default(300)
   bio             String?  @db.Text
-  achievements    String[] 
+  achievements    String[]
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  appointments    Appointment[]
-  availabilities  DoctorAvailability[]
+  // Status fields
+  isAdmin    Boolean   @default(false)
+  isActive   Boolean   @default(true)
+  disabledAt DateTime?
+  deletedAt  DateTime?
+  colorCode  String    @default("#3B82F6") // Default blue
+
+  appointments   Appointment[]
+  availabilities DoctorAvailability[]
+
+  // New relations
+  credentials        DoctorCredentials?
+  invitationsSent    DoctorInvitation[]        @relation("invitedByDoctor")
+  loginLogs          LoginLog[]
+  patientAssignments PatientDoctorAssignment[]
+  referralsSent      PatientReferral[]         @relation("referralFrom")
+  referralsReceived  PatientReferral[]         @relation("referralTo")
+  medicalEvents      PatientMedicalEvent[]
 
   @@index([userId])
+  @@index([isAdmin])
+  @@index([isActive])
 }
 
 model DoctorAvailability {
-  id         String   @id @default(uuid())
-  doctorId   String
-  doctor     Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  dayOfWeek  Int      // 0=Sunday, 1=Monday, etc.
-  startTime  String   // "09:00"
-  endTime    String   // "17:00"
-  isActive   Boolean  @default(true)
-  slotDuration Int    @default(30) // minutes
-  maxPatients Int     @default(1)
-  createdAt  DateTime @default(now())
+  id           String   @id @default(uuid())
+  doctorId     String
+  doctor       Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  dayOfWeek    Int // 0=Sunday, 1=Monday, etc.
+  startTime    String // "09:00"
+  endTime      String // "17:00"
+  isActive     Boolean  @default(true)
+  slotDuration Int      @default(30) // minutes
+  maxPatients  Int      @default(1)
+  createdAt    DateTime @default(now())
 
   @@unique([doctorId, dayOfWeek])
   @@index([doctorId, dayOfWeek])
 }
 
 model Appointment {
-  id              String   @id @default(uuid())
-  patientId       String
-  doctorId        String
-  patient         Patient  @relation(fields: [patientId], references: [id])
-  doctor          Doctor   @relation(fields: [doctorId], references: [id])
-  
+  id        String  @id @default(uuid())
+  patientId String
+  doctorId  String
+  patient   Patient @relation(fields: [patientId], references: [id])
+  doctor    Doctor  @relation(fields: [doctorId], references: [id])
+
   appointmentDate DateTime
   appointmentType String   @default("IN_PERSON")
   status          String   @default("PENDING")
   serviceType     String   @default("GENERAL_CONSULTATION")
-  
-  symptoms        String?  @db.Text
+
+  symptoms          String? @db.Text
   previousTreatment String? @db.Text
-  duration        Int      @default(30)
-  
-  googleMeetLink  String?
-  googleEventId   String?
-  
-  diagnosis       String?  @db.Text
-  treatmentPlan   String?  @db.Text
-  recommendations String?  @db.Text
-  
-  confirmedAt     DateTime?
-  completedAt     DateTime?
-  cancelledAt     DateTime?
-  reminderSentAt  DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  duration          Int     @default(30)
+
+  googleMeetLink String?
+  googleEventId  String?
+
+  diagnosis       String? @db.Text
+  treatmentPlan   String? @db.Text
+  recommendations String? @db.Text
+
+  confirmedAt    DateTime?
+  completedAt    DateTime?
+  cancelledAt    DateTime?
+  reminderSentAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([appointmentDate])
   @@index([status])
@@ -155,13 +176,134 @@ model VerificationToken {
 }
 
 model ContactMessage {
-  id         String   @id @default(uuid())
-  name       String
-  email      String
-  phone      String?
-  subject    String
-  message    String   @db.Text
-  status     String   @default("unread")
-  repliedAt  DateTime?
-  createdAt  DateTime @default(now())
+  id        String    @id @default(uuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String    @db.Text
+  status    String    @default("unread")
+  repliedAt DateTime?
+  createdAt DateTime  @default(now())
+}
+
+// Doctor credentials for secure login
+model DoctorCredentials {
+  id                 String    @id @default(uuid())
+  doctorId           String    @unique
+  email              String    @unique
+  passwordHash       String // bcrypt hash
+  saltRounds         Int       @default(12)
+  lastPasswordChange DateTime?
+  failedAttempts     Int       @default(0)
+  lockedUntil        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([doctorId])
+}
+
+// Login audit log
+model LoginLog {
+  id           String   @id @default(uuid())
+  email        String
+  doctorId     String?
+  ipAddress    String?
+  userAgent    String?
+  success      Boolean
+  attemptType  String // "password", "google", "magic_link"
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  doctor Doctor? @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([doctorId])
+  @@index([createdAt])
+}
+
+// Doctor invitation system
+model DoctorInvitation {
+  id         String    @id @default(uuid())
+  email      String    @unique
+  invitedBy  String // doctorId who invited
+  token      String    @unique
+  role       String    @default("DOCTOR") // DOCTOR or ADMIN
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  inviter Doctor @relation(fields: [invitedBy], references: [id], name: "invitedByDoctor")
+
+  @@index([email])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+// Patient-Doctor assignment (CURRENT relationship)
+model PatientDoctorAssignment {
+  id          String    @id @default(uuid())
+  patientId   String
+  doctorId    String
+  assignedAt  DateTime  @default(now())
+  assignedBy  String? // doctorId who assigned
+  isActive    Boolean   @default(true)
+  endedAt     DateTime?
+  endedBy     String? // doctorId who ended assignment
+  endedReason String? // "REFERRED", "MIGRATED", "DISABLED"
+
+  patient Patient @relation(fields: [patientId], references: [id])
+  doctor  Doctor  @relation(fields: [doctorId], references: [id])
+
+  @@unique([patientId, doctorId, isActive])
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([isActive])
+}
+
+// Patient referral tracking
+model PatientReferral {
+  id           String    @id @default(uuid())
+  patientId    String
+  fromDoctorId String
+  toDoctorId   String
+  reason       String?   @db.Text
+  status       String    @default("PENDING") // PENDING, ACCEPTED, REJECTED
+  acceptedAt   DateTime?
+  rejectedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  patient    Patient @relation(fields: [patientId], references: [id])
+  fromDoctor Doctor  @relation(fields: [fromDoctorId], references: [id], name: "referralFrom")
+  toDoctor   Doctor  @relation(fields: [toDoctorId], references: [id], name: "referralTo")
+
+  @@index([patientId])
+  @@index([fromDoctorId])
+  @@index([toDoctorId])
+  @@index([status])
+}
+
+// Unified medical history (color-coded)
+model PatientMedicalEvent {
+  id          String   @id @default(uuid())
+  patientId   String
+  doctorId    String
+  eventType   String // "APPOINTMENT", "PRESCRIPTION", "NOTE", "DIAGNOSIS"
+  eventId     String? // ID of appointment/prescription
+  title       String
+  description String?  @db.Text
+  metadata    Json? // Flexible data storage
+  createdAt   DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id])
+  doctor  Doctor  @relation(fields: [doctorId], references: [id])
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([eventType])
+  @@index([createdAt])
 }

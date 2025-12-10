@@ -1,9 +1,10 @@
-// app/api/auth/[...nextauth]/route.ts - FOR NEXTAUTH v4
+// app/api/auth/[...nextauth]/route.ts - UPDATED
 import NextAuth, { NextAuthOptions } from "next-auth"
 import { PrismaAdapter } from "@next-auth/prisma-adapter"
 import { prisma } from "@/lib/prisma"
 import GoogleProvider from "next-auth/providers/google"
 import CredentialsProvider from "next-auth/providers/credentials"
+import { DoctorCredentialsService } from "@/lib/auth/doctor-credentials"
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -23,7 +24,40 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Email and password required")
         }
 
-        // Hardcoded doctor credentials for now
+        // Option 1: Try new credential system
+        try {
+          // Check if it's a registered doctor email
+          const isDoctorEmail = await DoctorCredentialsService.isRegisteredDoctor(credentials.email)
+          
+          if (!isDoctorEmail) {
+            throw new Error("Access restricted to registered doctors only")
+          }
+
+          // Validate using new credential system
+          const result = await DoctorCredentialsService.validateCredentials(
+            credentials.email,
+            credentials.password
+          )
+
+          if (result.valid && result.doctor) {
+            return {
+              id: result.doctor.id,
+              email: result.doctor.email,
+              name: result.doctor.name,
+              role: result.doctor.isAdmin ? 'ADMIN' : 'DOCTOR',
+              isDoctor: true
+            }
+          }
+          
+          if (result.locked) {
+            throw new Error("Account locked. Try again in 15 minutes.")
+          }
+        } catch (error) {
+          console.log('New credential system error:', error)
+          // Fall through to old system
+        }
+
+        // Option 2: Fallback to old hardcoded credentials
         if (
           credentials.email === 'drkavithahc@gmail.com' &&
           credentials.password === 'Doctor@2024'
@@ -37,25 +71,58 @@ export const authOptions: NextAuthOptions = {
               data: {
                 email: credentials.email,
                 name: 'Dr. Kavitha Thomas',
-                role: 'DOCTOR',
+                role: 'ADMIN',
                 emailVerified: new Date(),
                 doctor: {
                   create: {
                     specialization: 'Homoeopathy',
                     qualifications: ['BHMS', 'MD'],
                     experience: 15,
-                    consultationFee: 300
+                    consultationFee: 300,
+                    isAdmin: true,
+                    isActive: true,
+                    colorCode: '#EF4444'
                   }
                 }
               }
             })
+          } else {
+            // Ensure doctor record exists and is admin
+            const doctor = await prisma.doctor.findUnique({
+              where: { userId: user.id }
+            })
+            
+            if (!doctor) {
+              await prisma.doctor.create({
+                data: {
+                  userId: user.id,
+                  specialization: 'Homoeopathy',
+                  qualifications: ['BHMS', 'MD'],
+                  experience: 15,
+                  consultationFee: 300,
+                  isAdmin: true,
+                  isActive: true,
+                  colorCode: '#EF4444'
+                }
+              })
+            } else if (!doctor.isAdmin) {
+              // Update to admin if not already
+              await prisma.doctor.update({
+                where: { id: doctor.id },
+                data: {
+                  isAdmin: true,
+                  isActive: true,
+                  colorCode: '#EF4444'
+                }
+              })
+            }
           }
 
           return {
             id: user.id,
             email: user.email,
             name: user.name,
-            role: user.role,
+            role: 'ADMIN',
             isDoctor: true
           }
         }
@@ -78,40 +145,65 @@ export const authOptions: NextAuthOptions = {
       console.log('🔐 SignIn - User:', user?.email, 'Provider:', account?.provider)
       
       if (account?.provider === 'google' && user?.email) {
-        const isDoctorEmail = user.email === 'drkavithahc@gmail.com'
+        // Check if this is a doctor email (admin or any registered doctor)
+        const existingDoctor = await prisma.doctor.findFirst({
+          where: {
+            user: {
+              email: user.email
+            }
+          },
+          include: {
+            user: true
+          }
+        })
+        
+        const isDoctorEmail = existingDoctor || user.email === 'drkavithahc@gmail.com'
         
         let existingUser = await prisma.user.findUnique({
-          where: { email: user.email }
+          where: { email: user.email },
+          include: {
+            doctor: true,
+            patient: true
+          }
         })
 
         if (!existingUser) {
           // Create new user with proper role
+          const userData: any = {
+            email: user.email,
+            name: user.name,
+            image: user.image,
+            emailVerified: new Date(),
+            role: isDoctorEmail ? 'DOCTOR' : 'PATIENT'
+          }
+
+          if (isDoctorEmail) {
+            userData.doctor = {
+              create: {
+                specialization: 'Homoeopathy',
+                qualifications: ['BHMS', 'MD'],
+                experience: 15,
+                consultationFee: 300,
+                isAdmin: user.email === 'drkavithahc@gmail.com',
+                isActive: true,
+                colorCode: user.email === 'drkavithahc@gmail.com' ? '#EF4444' : '#3B82F6'
+              }
+            }
+          } else {
+            userData.patient = {
+              create: {}
+            }
+          }
+
           existingUser = await prisma.user.create({
-            data: {
-              email: user.email,
-              name: user.name,
-              image: user.image,
-              emailVerified: new Date(),
-              role: isDoctorEmail ? 'DOCTOR' : 'PATIENT',
-              ...(isDoctorEmail && {
-                doctor: {
-                  create: {
-                    specialization: 'Homoeopathy',
-                    qualifications: ['BHMS', 'MD'],
-                    experience: 15,
-                    consultationFee: 300
-                  }
-                }
-              }),
-              ...(!isDoctorEmail && {
-                patient: {
-                  create: {}
-                }
-              })
+            data: userData,
+            include: {
+              doctor: true,
+              patient: true
             }
           })
         } else {
-          // Update existing user - ensure role is correct
+          // Update existing user
           await prisma.user.update({
             where: { id: existingUser.id },
             data: {
@@ -121,13 +213,38 @@ export const authOptions: NextAuthOptions = {
               role: isDoctorEmail ? 'DOCTOR' : existingUser.role
             }
           })
+
+          // Handle doctor record
+          if (isDoctorEmail && !existingUser.doctor) {
+            // Create doctor if doesn't exist
+            await prisma.doctor.create({
+              data: {
+                userId: existingUser.id,
+                specialization: 'Homoeopathy',
+                qualifications: ['BHMS', 'MD'],
+                experience: 15,
+                consultationFee: 300,
+                isAdmin: user.email === 'drkavithahc@gmail.com',
+                isActive: true,
+                colorCode: user.email === 'drkavithahc@gmail.com' ? '#EF4444' : '#3B82F6'
+              }
+            })
+          } else if (existingUser.doctor) {
+            // Update existing doctor to ensure correct status
+            await prisma.doctor.update({
+              where: { id: existingUser.doctor.id },
+              data: {
+                isAdmin: user.email === 'drkavithahc@gmail.com' ? true : existingUser.doctor.isAdmin,
+                isActive: true
+              }
+            })
+          }
         }
 
         user.id = existingUser.id;
         (user as any).role = existingUser.role;
         (user as any).isDoctor = isDoctorEmail;
         
-        // DEBUG: Log role assignment
         console.log('🔐 Role assigned:', existingUser.role, 'isDoctor:', isDoctorEmail)
       }
 
@@ -140,13 +257,24 @@ export const authOptions: NextAuthOptions = {
         token.email = user.email
         token.name = user.name
         token.role = (user as any).role
-        token.isDoctor = (user as any).isDoctor || user.email === 'drkavithahc@gmail.com'
+        token.isDoctor = (user as any).isDoctor
       }
 
-      // Also check if it's doctor email even without user object
-      if (token.email === 'drkavithahc@gmail.com') {
-        token.isDoctor = true
-        token.role = 'DOCTOR'
+      // For security, only set isDoctor if we have user object or can verify from DB
+      if (token.email === 'drkavithahc@gmail.com' && !token.isDoctor) {
+        // Double-check from database
+        const doctor = await prisma.doctor.findFirst({
+          where: {
+            user: {
+              email: token.email
+            },
+            isActive: true
+          }
+        })
+        if (doctor) {
+          token.isDoctor = true
+          token.role = doctor.isAdmin ? 'ADMIN' : 'DOCTOR'
+        }
       }
 
       if (trigger === 'update' && session) {
@@ -168,12 +296,22 @@ export const authOptions: NextAuthOptions = {
         session.user.email = token.email as string
         session.user.name = token.name as string
         session.user.role = token.role as string
-        session.user.isDoctor = token.isDoctor as boolean || token.email === 'drkavithahc@gmail.com'
+        session.user.isDoctor = token.isDoctor as boolean
         
-        // Force doctor role for doctor email
-        if (session.user.email === 'drkavithahc@gmail.com') {
-          session.user.isDoctor = true
-          session.user.role = 'DOCTOR'
+        // Final verification for admin doctor
+        if (session.user.email === 'drkavithahc@gmail.com' && !session.user.isDoctor) {
+          const doctor = await prisma.doctor.findFirst({
+            where: {
+              user: {
+                email: session.user.email
+              },
+              isActive: true
+            }
+          })
+          if (doctor) {
+            session.user.isDoctor = true
+            session.user.role = doctor.isAdmin ? 'ADMIN' : 'DOCTOR'
+          }
         }
       }
 

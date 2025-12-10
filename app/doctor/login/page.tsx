@@ -1,7 +1,7 @@
-// app/doctor/login/page.tsx - NEW SIMPLIFIED
+// app/doctor/login/page.tsx - UPDATED FOR SECURITY
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { signIn, useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -19,67 +19,94 @@ export default function DoctorLoginPage() {
   const router = useRouter()
   const { data: session } = useSession()
 
- // In the doctor login page
-const handleGoogleLogin = async () => {
-  setLoading(true)
-  setError('')
-  
-  try {
-    // Force a clean sign out first
-    await signOut({ redirect: false })
+  useEffect(() => {
+    // If already logged in as doctor, redirect to dashboard
+    if (session?.user?.isDoctor) {
+      router.push('/dashboard')
+    }
+  }, [session, router])
+
+  const handleGoogleLogin = async () => {
+    setLoading(true)
+    setError('')
     
-    // Sign in with Google with EXPLICIT callbackUrl
-    await signIn('google', {
-      callbackUrl: '/dashboard', // Explicitly set where to go after login
-      redirect: true
-    })
-  } catch (error) {
-    console.error('Google login error:', error)
-    setError('Failed to sign in with Google')
-    setLoading(false)
+    try {
+      // Force a clean sign out first
+      await signOut({ redirect: false })
+      
+      // Sign in with Google with EXPLICIT callbackUrl
+      await signIn('google', {
+        callbackUrl: '/dashboard',
+        redirect: true
+      })
+    } catch (error) {
+      console.error('Google login error:', error)
+      setError('Failed to sign in with Google')
+      setLoading(false)
+    }
   }
-}
+
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
+    // Basic validation
+    if (!email || !password) {
+      setError('Please enter both email and password')
+      setLoading(false)
+      return
+    }
+
     try {
       const result = await signIn('credentials', {
-        email,
+        email: email.trim().toLowerCase(),
         password,
         redirect: false,
         callbackUrl: '/dashboard'
       })
 
       if (result?.error) {
-        setError(result.error)
-      } else if (result?.url) {
+        // Parse error messages for better UX
+        if (result.error.includes('locked')) {
+          setError('Account locked. Please try again in 15 minutes.')
+        } else if (result.error.includes('restricted')) {
+          setError('Only registered doctors can access this portal.')
+        } else {
+          setError('Invalid email or password')
+        }
+      } else if (result?.ok && result?.url) {
         router.push(result.url)
+      } else {
+        setError('Login failed. Please try again.')
       }
     } catch (error) {
-      setError('Login failed')
+      console.error('Login error:', error)
+      setError('An unexpected error occurred. Please try again.')
     } finally {
       setLoading(false)
     }
   }
-  
-  // In the doctor login page, update the signOut function
-const handleSignOut = async () => {
-  await signOut({ 
-    callbackUrl: '/doctor/login',
-    redirect: true 
-  })
-}
 
+  const handleSignOut = async () => {
+    await signOut({ 
+      callbackUrl: '/',
+      redirect: true 
+    })
+  }
 
   // If already logged in as patient, show warning
-  const isPatientSession = session?.user && session.user.email !== 'drkavithahc@gmail.com'
+  const isPatientSession = session?.user && !session.user.isDoctor && session.user.email !== 'drkavithahc@gmail.com'
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
+          <div className="flex justify-center mb-4">
+            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+              <User className="h-6 w-6 text-primary" />
+            </div>
+          </div>
           <CardTitle>Doctor Login</CardTitle>
           <CardDescription>
             Secure access to doctor dashboard
@@ -95,7 +122,7 @@ const handleSignOut = async () => {
                     You're signed in as a patient. Please sign out first to access doctor login.
                   </p>
                   <Button
-                    onClick={() => signOut({ callbackUrl: '/doctor/login' })}
+                    onClick={handleSignOut}
                     variant="outline"
                     size="sm"
                     className="mt-2"
@@ -145,11 +172,12 @@ const handleSignOut = async () => {
                 <Input
                   id="doctor-email"
                   type="email"
-                  placeholder="drkavithahc@gmail.com"
+                  placeholder="Enter registered doctor email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={loading || isPatientSession}
+                  autoComplete="username"
                 />
               </div>
 
@@ -160,6 +188,7 @@ const handleSignOut = async () => {
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="text-xs text-gray-500 hover:text-gray-700"
+                    disabled={loading || isPatientSession}
                   >
                     {showPassword ? 'Hide' : 'Show'}
                   </button>
@@ -172,6 +201,7 @@ const handleSignOut = async () => {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   disabled={loading || isPatientSession}
+                  autoComplete="current-password"
                 />
               </div>
 
@@ -180,13 +210,25 @@ const handleSignOut = async () => {
                 disabled={loading || isPatientSession}
                 className="w-full"
               >
-                <Lock className="mr-2 h-4 w-4" />
-                Sign in with Password
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Signing in...
+                  </>
+                ) : (
+                  <>
+                    <Lock className="mr-2 h-4 w-4" />
+                    Sign in with Password
+                  </>
+                )}
               </Button>
             </form>
           </div>
 
           <div className="text-center text-sm text-gray-500 pt-4 border-t">
+            <p className="mb-2">
+              <span className="font-semibold">Note:</span> Only registered doctors can access this portal
+            </p>
             <p>
               Patients: Please use the{' '}
               <a href="/portal/login" className="text-primary hover:underline">

@@ -1,84 +1,103 @@
-// prisma/seed.ts
+// prisma/seed.ts - UPDATED WITH BCRYPT
 import { PrismaClient } from '@prisma/client'
-import bcrypt from 'bcryptjs'
+import bcrypt from 'bcrypt'
 
 const prisma = new PrismaClient()
+const saltRounds = 12
 
 async function main() {
-  // Create Doctor first
-  const doctorUser = await prisma.user.create({
-    data: {
-      email: 'drkavithathomas@example.com',
-      name: 'Dr. Kavitha Thomas',
-      phone: '+919847000000',
-      role: 'DOCTOR',
-      emailVerified: new Date(),
+  console.log('🌱 Seeding database with security setup...')
+
+  // 1. Ensure admin doctor exists
+  let adminUser = await prisma.user.findUnique({
+    where: { email: 'drkavithahc@gmail.com' }
+  })
+
+  if (!adminUser) {
+    adminUser = await prisma.user.create({
+      data: {
+        email: 'drkavithahc@gmail.com',
+        name: 'Dr. Kavitha Thomas',
+        role: 'ADMIN',
+        emailVerified: new Date(),
+        doctor: {
+          create: {
+            specialization: 'Homoeopathy',
+            qualifications: ['BHMS', 'MD'],
+            experience: 15,
+            consultationFee: 300,
+            isAdmin: true,
+            isActive: true,
+            colorCode: '#EF4444' // Red for admin
+          }
+        }
+      }
+    })
+    console.log('✅ Created admin doctor')
+  } else {
+    // Update existing doctor to be admin
+    const adminDoctor = await prisma.doctor.findUnique({
+      where: { userId: adminUser.id }
+    })
+    
+    if (adminDoctor) {
+      await prisma.doctor.update({
+        where: { id: adminDoctor.id },
+        data: {
+          isAdmin: true,
+          isActive: true,
+          colorCode: '#EF4444'
+        }
+      })
+      console.log('✅ Updated existing doctor to admin')
+    }
+  }
+
+  // 2. Get the doctor record
+  const adminDoctor = await prisma.doctor.findFirst({
+    where: {
+      user: {
+        email: 'drkavithahc@gmail.com'
+      }
     }
   })
 
-  const doctor = await prisma.doctor.create({
-    data: {
-      userId: doctorUser.id,
-      specialization: 'Homoeopathy',
-      qualifications: ['DHMS', 'MD (Homoeopathy)'],
-      experience: 15,
-      consultationFee: 300,
-      bio: 'Experienced homoeopathic doctor...',
-      achievements: ['Best Homoeopathic Doctor Award 2020', 'Published 5 research papers'],
+  if (!adminDoctor) {
+    throw new Error('Admin doctor not found')
+  }
+
+  // 3. Create secure credentials for admin
+  const passwordHash = await bcrypt.hash('Doctor@2024', saltRounds)
+  
+  await prisma.doctorCredentials.upsert({
+    where: { doctorId: adminDoctor.id },
+    update: {
+      email: 'drkavithahc@gmail.com',
+      passwordHash,
+      saltRounds,
+      lastPasswordChange: new Date()
+    },
+    create: {
+      doctorId: adminDoctor.id,
+      email: 'drkavithahc@gmail.com',
+      passwordHash,
+      saltRounds,
+      lastPasswordChange: new Date()
     }
   })
 
-  // Create Doctor Availabilities
-  await prisma.doctorAvailability.createMany({
-    data: [
-      { doctorId: doctor.id, dayOfWeek: 1, startTime: '09:00', endTime: '17:00' },
-      { doctorId: doctor.id, dayOfWeek: 2, startTime: '09:00', endTime: '17:00' },
-      { doctorId: doctor.id, dayOfWeek: 3, startTime: '09:00', endTime: '17:00' },
-      { doctorId: doctor.id, dayOfWeek: 4, startTime: '09:00', endTime: '17:00' },
-      { doctorId: doctor.id, dayOfWeek: 5, startTime: '09:00', endTime: '17:00' },
-      { doctorId: doctor.id, dayOfWeek: 6, startTime: '09:00', endTime: '14:00' },
-    ]
-  })
-
-  // Create Patient
-  const patientUser = await prisma.user.create({
-    data: {
-      email: 'patient@example.com',
-      name: 'John Doe',
-      phone: '+919876543210',
-      role: 'PATIENT',
-      emailVerified: new Date(),
-    }
-  })
-
-  const patient = await prisma.patient.create({
-    data: {
-      userId: patientUser.id,
-      age: 35,
-      gender: 'Male',
-      address: 'Kozhikode, Kerala',
-      allergies: 'None',
-      bloodGroup: 'O+'
-    }
-  })
-
-  // Create Appointment
-  const appointmentDate = new Date()
-  appointmentDate.setDate(appointmentDate.getDate() + 2)
-  appointmentDate.setHours(10, 0, 0, 0)
-
-  const appointment = await prisma.appointment.create({
-    data: {
-      patientId: patient.id,
-      doctorId: doctor.id,
-      appointmentDate: appointmentDate,
-      appointmentType: 'IN_PERSON',
-      status: 'CONFIRMED',
-      serviceType: 'GENERAL_CONSULTATION',
-      symptoms: 'Persistent headache and fatigue',
-      duration: 30
-    }
-  })
-
-  console.log('Seeding completed successfully!')
+  console.log('✅ Admin credentials created')
+  console.log('🎉 Seeding completed!')
+  console.log('📧 Admin email: drkavithahc@gmail.com')
+  console.log('🔐 Default password: Doctor@2024')
+  console.log('⚠️  Note: Use password login with the credentials above')
 }
+
+main()
+  .catch((e) => {
+    console.error('❌ Seeding error:', e)
+    process.exit(1)
+  })
+  .finally(async () => {
+    await prisma.$disconnect()
+  })
