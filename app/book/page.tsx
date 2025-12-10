@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { appointmentSchema, AppointmentFormData } from '@/lib/validations/appointment'
 import BookingWizard from '@/components/booking/booking-wizard'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Calendar, Clock, User, FileText } from 'lucide-react'
+import { Calendar, UserIcon, Clock, User, FileText } from 'lucide-react'
 
 export default function BookPage() {
   const [step, setStep] = useState(1)
@@ -14,6 +14,7 @@ export default function BookPage() {
   const form = useForm<AppointmentFormData>({
     resolver: zodResolver(appointmentSchema),
     defaultValues: {
+      doctorId: '',  // ADD THIS
       appointmentType: 'IN_PERSON',
       serviceType: 'GENERAL_CONSULTATION',
       appointmentDate: '',
@@ -29,10 +30,11 @@ export default function BookPage() {
   })
 
   const steps = [
-    { number: 1, title: 'Service', icon: Clock },
-    { number: 2, title: 'Date & Time', icon: Calendar },
-    { number: 3, title: 'Patient Info', icon: User },
-    { number: 4, title: 'Confirmation', icon: FileText },
+    { number: 1, title: 'Doctor', icon: UserIcon },  // CHANGE: User to UserIcon
+    { number: 2, title: 'Service', icon: Clock },
+    { number: 3, title: 'Date & Time', icon: Calendar },
+    { number: 4, title: 'Patient Info', icon: User },
+    { number: 5, title: 'Confirmation', icon: FileText },
   ]
 
   return (

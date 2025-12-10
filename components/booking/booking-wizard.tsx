@@ -12,9 +12,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
 import { format } from 'date-fns'
-import { Calendar as CalendarIcon, Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Calendar as CalendarIcon, Check, ChevronLeft, ChevronRight, User as UserIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 interface BookingWizardProps {
   step: number
@@ -22,11 +23,26 @@ interface BookingWizardProps {
   form: UseFormReturn<AppointmentFormData, any, AppointmentFormData>
 }
 
+interface Doctor {
+  id: string
+  user: {
+    name: string | null
+    email: string
+  }
+  specialization: string
+  experience: number
+  consultationFee: number
+  colorCode: string
+  isActive: boolean
+}
+
 export default function BookingWizard({ step, setStep, form }: BookingWizardProps) {
   const [loading, setLoading] = useState(false)
   const [availableSlots, setAvailableSlots] = useState<string[]>([])
   const [selectedDate, setSelectedDate] = useState<Date>()
   const [selectedTime, setSelectedTime] = useState<string>()
+  const [doctors, setDoctors] = useState<Doctor[]>([])
+  const [selectedDoctor, setSelectedDoctor] = useState<string>('')
 
   const appointmentTypes = [
     { value: 'IN_PERSON', label: 'In-Person Visit', description: 'Visit our clinic in Areekkad' },
@@ -45,23 +61,47 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
   ]
 
   useEffect(() => {
-    console.log('Booking Wizard mounted, step:', step)
-    console.log('Form state:', form.getValues())
-  }, [step, form])
+    fetchActiveDoctors()
+  }, [])
 
   // Fetch available slots when date is selected
   useEffect(() => {
-    if (selectedDate) {
+    if (selectedDate && selectedDoctor) {
       fetchAvailableSlots(selectedDate)
     }
-  }, [selectedDate])
+  }, [selectedDate, selectedDoctor])
+
+  const fetchActiveDoctors = async () => {
+    try {
+      const response = await fetch('/api/doctors/active')
+      if (response.ok) {
+        const data = await response.json()
+        setDoctors(data)
+        
+        // Auto-select first doctor if only one exists
+        if (data.length === 1) {
+          setSelectedDoctor(data[0].id)
+          form.setValue('doctorId', data[0].id)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching doctors:', error)
+    }
+  }
 
   const fetchAvailableSlots = async (date: Date) => {
     try {
-      const response = await fetch(`/api/appointments/availability?date=${date.toISOString()}`)
+      if (!selectedDoctor) {
+        alert('Please select a doctor first')
+        return
+      }
+      
+      const response = await fetch(`/api/appointments/availability?date=${date.toISOString()}&doctorId=${selectedDoctor}`)
       const data = await response.json()
       if (data.success) {
         setAvailableSlots(data.availableSlots)
+      } else if (data.error) {
+        alert(data.error)
       }
     } catch (error) {
       console.error('Error fetching slots:', error)
@@ -89,16 +129,10 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
   const handleSubmit = async (data: AppointmentFormData) => {
     console.log('=== BOOKING SUBMIT START ===')
     console.log('Form data to submit:', data)
-    console.log('Is form valid?', form.formState.isValid)
-    console.log('Form errors:', form.formState.errors)
-    
-  
     
     setLoading(true)
     
     try {
-      console.log('Sending POST request to /api/appointments/book...')
-      
       const response = await fetch('/api/appointments/book', {
         method: 'POST',
         headers: { 
@@ -107,9 +141,6 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
         body: JSON.stringify(data),
       })
 
-      console.log('Response status:', response.status)
-      console.log('Response status text:', response.statusText)
-      
       const responseText = await response.text()
       console.log('Response text:', responseText)
       
@@ -127,6 +158,7 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
         alert('✅ Appointment booked successfully! Check your email for confirmation.')
         // Reset form PROPERLY
         form.reset({
+          doctorId: '',
           appointmentType: 'IN_PERSON',
           serviceType: 'GENERAL_CONSULTATION',
           appointmentDate: '',
@@ -140,8 +172,10 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
           agreeToTerms: false,
         })
         setStep(1)
+        setSelectedDoctor('')
         setSelectedDate(undefined)
         setSelectedTime(undefined)
+        setAvailableSlots([])
       } else {
         alert(`❌ Error: ${result.error || 'Failed to book appointment'}`)
       }
@@ -154,7 +188,87 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
     }
   }
 
+  // NEW Step 1: Doctor Selection
   const renderStep1 = () => (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-xl font-semibold mb-4">Select Doctor</h3>
+        <p className="text-gray-600 mb-6">Choose a doctor for your consultation</p>
+        
+        {doctors.length > 0 ? (
+          <RadioGroup
+            value={selectedDoctor}
+            onValueChange={(value) => {
+              setSelectedDoctor(value)
+              form.setValue('doctorId', value)
+            }}
+            className="space-y-4"
+          >
+            {doctors.map((doctor) => (
+              <div key={doctor.id} className="relative">
+                <RadioGroupItem
+                  value={doctor.id}
+                  id={`doctor-${doctor.id}`}
+                  className="peer sr-only"
+                />
+                <Label
+                  htmlFor={`doctor-${doctor.id}`}
+                  className="flex items-center justify-between rounded-lg border-2 border-gray-200 bg-white p-4 hover:bg-gray-50 hover:border-primary peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer"
+                >
+                  <div className="flex items-center space-x-4">
+                    <Avatar style={{ backgroundColor: doctor.colorCode }}>
+                      <AvatarFallback className="text-white font-semibold">
+                        {doctor.user.name?.charAt(0) || doctor.user.email.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="text-left">
+                      <p className="font-semibold">{doctor.user.name || 'Doctor'}</p>
+                      <p className="text-sm text-gray-500">{doctor.specialization}</p>
+                      <div className="flex items-center space-x-4 mt-1 text-sm">
+                        <span className="text-gray-600">{doctor.experience} years experience</span>
+                        <span className="text-primary font-medium">₹{doctor.consultationFee}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="h-5 w-5 rounded-full border-2 border-gray-300 peer-data-[state=checked]:bg-primary peer-data-[state=checked]:border-primary"></div>
+                </Label>
+              </div>
+            ))}
+          </RadioGroup>
+        ) : (
+          <div className="text-center py-8">
+            <div className="h-12 w-12 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+              <UserIcon className="h-6 w-6 text-gray-400" />
+            </div>
+            <p className="text-gray-600">No doctors available at the moment</p>
+            <p className="text-sm text-gray-500 mt-2">Please try again later or contact the clinic</p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-between">
+        <Button type="button" disabled>
+          Previous
+        </Button>
+        <Button 
+          onClick={() => {
+            if (!selectedDoctor) {
+              alert('Please select a doctor')
+              return
+            }
+            setStep(2)
+          }}
+          disabled={!selectedDoctor || doctors.length === 0}
+        >
+          Next: Appointment Details
+          <ChevronRight className="ml-2 h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  )
+
+  // Step 2: Appointment Type & Service (was Step 1)
+  const renderStep2 = () => (
     <div className="space-y-6">
       <div>
         <h3 className="text-xl font-semibold mb-4">Select Appointment Type</h3>
@@ -212,43 +326,36 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
       </div>
 
       <div className="flex justify-between">
-        <Button type="button" disabled>
+        <Button type="button" variant="outline" onClick={() => setStep(1)}>
+          <ChevronLeft className="mr-2 h-4 w-4" />
           Previous
         </Button>
         <Button onClick={() => {
-  // Validate step 1 fields
-  const errors = form.formState.errors;
-  const step1Fields = ['appointmentType', 'serviceType'];
-  
-  // Check for validation errors
-  const hasErrors = step1Fields.some(field => errors[field as keyof typeof errors]);
-  
-  if (hasErrors) {
-    // Trigger validation to show errors
-    form.trigger(step1Fields as any);
-    return;
-  }
-  
-  // Check if fields are filled
-  const values = form.getValues();
-  const appointmentType = values.appointmentType;
-  const serviceType = values.serviceType;
-  
-  if (!appointmentType || !serviceType) {
-    alert('Please select both appointment type and service type');
-    return;
-  }
-  
-  setStep(2);
-}}>
-  Next: Select Date & Time
-  <ChevronRight className="ml-2 h-4 w-4" />
-</Button>
+          const errors = form.formState.errors;
+          const step2Fields = ['appointmentType', 'serviceType'];
+          
+          if (step2Fields.some(field => errors[field as keyof typeof errors])) {
+            form.trigger(step2Fields as any);
+            return;
+          }
+          
+          const values = form.getValues();
+          if (!values.appointmentType || !values.serviceType) {
+            alert('Please select both appointment type and service type');
+            return;
+          }
+          
+          setStep(3);
+        }}>
+          Next: Select Date & Time
+          <ChevronRight className="ml-2 h-4 w-4" />
+        </Button>
       </div>
     </div>
   )
 
-  const renderStep2 = () => (
+  // Step 3: Date & Time (was Step 2)
+  const renderStep3 = () => (
     <div className="space-y-6">
       <div>
         <h3 className="text-xl font-semibold mb-4">Select Date</h3>
@@ -260,6 +367,7 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
                 "w-full justify-start text-left font-normal",
                 !selectedDate && "text-muted-foreground"
               )}
+              disabled={!selectedDoctor}
             >
               <CalendarIcon className="mr-2 h-4 w-4" />
               {selectedDate ? format(selectedDate, "PPP") : "Pick a date"}
@@ -273,12 +381,15 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
               disabled={(date) => {
                 const today = new Date()
                 today.setHours(0, 0, 0, 0)
-                return date < today || date.getDay() === 0 // Disable Sundays
+                return date < today || date.getDay() === 0
               }}
               initialFocus
             />
           </PopoverContent>
         </Popover>
+        {!selectedDoctor && (
+          <p className="text-sm text-red-500 mt-2">Please select a doctor first</p>
+        )}
       </div>
 
       {selectedDate && (
@@ -307,7 +418,7 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
       )}
 
       <div className="flex justify-between">
-        <Button type="button" variant="outline" onClick={() => setStep(1)}>
+        <Button type="button" variant="outline" onClick={() => setStep(2)}>
           <ChevronLeft className="mr-2 h-4 w-4" />
           Previous
         </Button>
@@ -316,9 +427,9 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
         if (!selectedDate || !selectedTime) {
         alert('Please select both date and time');
          return;
-    }
-    setStep(3);
-  }}
+        }
+        setStep(4);
+      }}
         >
           Next: Patient Information
           <ChevronRight className="ml-2 h-4 w-4" />
@@ -327,7 +438,8 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
     </div>
   )
 
-  const renderStep3 = () => (
+  // Step 4: Patient Information (was Step 3)
+  const renderStep4 = () => (
     <div className="space-y-6">
       <h3 className="text-xl font-semibold mb-4">Patient Information</h3>
       
@@ -417,35 +529,29 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
       </div>
 
       <div className="flex justify-between">
-        <Button type="button" variant="outline" onClick={() => setStep(2)}>
+        <Button type="button" variant="outline" onClick={() => setStep(3)}>
           <ChevronLeft className="mr-2 h-4 w-4" />
           Previous
         </Button>
         <Button onClick={() => {
-  // Validate step 3 fields
   const errors = form.formState.errors;
   const requiredFields = ['patientName', 'patientEmail', 'patientPhone', 'symptoms'];
   
-  // Check if any required fields are empty
   const values = form.getValues();
   const emptyFields = requiredFields.filter(field => {
     const value = values[field as keyof typeof values];
     return !value || value.toString().trim() === '';
   });
   
-  // Check for validation errors
   const hasErrors = requiredFields.some(field => errors[field as keyof typeof errors]);
   
   if (emptyFields.length > 0 || hasErrors) {
     alert('Please fill all required fields correctly before proceeding');
-    
-    // Trigger validation
     form.trigger(requiredFields as any);
-    
     return;
   }
   
-  setStep(4);
+  setStep(5);
 }}>
   Next: Review & Confirm
   <ChevronRight className="ml-2 h-4 w-4" />
@@ -454,102 +560,124 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
     </div>
   )
 
-  const renderStep4 = () => (
-    <div className="space-y-6">
-      <h3 className="text-xl font-semibold mb-4">Review & Confirm</h3>
-      
-      <div className="bg-gray-50 rounded-lg p-6 space-y-4">
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            <p className="text-sm text-gray-500">Appointment Type</p>
-            <p className="font-semibold">
-              {form.getValues('appointmentType') === 'IN_PERSON' ? 'In-Person Visit' : 'Online Consultation'}
-            </p>
-          </div>
-          
-          <div>
-            <p className="text-sm text-gray-500">Service Type</p>
-            <p className="font-semibold">
-              {serviceTypes.find(s => s.value === form.getValues('serviceType'))?.label}
-            </p>
+  // Step 5: Review & Confirm (was Step 4)
+  const renderStep5 = () => {
+    const selectedDoctorInfo = doctors.find(d => d.id === selectedDoctor)
+    
+    return (
+      <div className="space-y-6">
+        <h3 className="text-xl font-semibold mb-4">Review & Confirm</h3>
+        
+        <div className="bg-gray-50 rounded-lg p-6 space-y-4">
+          <div className="grid md:grid-cols-2 gap-4">
+            {selectedDoctorInfo && (
+              <div className="md:col-span-2">
+                <p className="text-sm text-gray-500">Selected Doctor</p>
+                <div className="flex items-center space-x-3 mt-1">
+                  <Avatar style={{ backgroundColor: selectedDoctorInfo.colorCode }}>
+                    <AvatarFallback className="text-white font-semibold">
+                      {selectedDoctorInfo.user.name?.charAt(0) || selectedDoctorInfo.user.email.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="font-semibold">{selectedDoctorInfo.user.name || 'Doctor'}</p>
+                    <p className="text-sm text-gray-600">{selectedDoctorInfo.specialization}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div>
+              <p className="text-sm text-gray-500">Appointment Type</p>
+              <p className="font-semibold">
+                {form.getValues('appointmentType') === 'IN_PERSON' ? 'In-Person Visit' : 'Online Consultation'}
+              </p>
+            </div>
+            
+            <div>
+              <p className="text-sm text-gray-500">Service Type</p>
+              <p className="font-semibold">
+                {serviceTypes.find(s => s.value === form.getValues('serviceType'))?.label}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-sm text-gray-500">Date & Time</p>
+              <p className="font-semibold">
+                {selectedDate && selectedTime
+                  ? `${format(selectedDate, 'PPP')} at ${selectedTime}`
+                  : 'Not selected'}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-sm text-gray-500">Patient Name</p>
+              <p className="font-semibold">{form.getValues('patientName')}</p>
+            </div>
+
+            <div>
+              <p className="text-sm text-gray-500">Email</p>
+              <p className="font-semibold">{form.getValues('patientEmail')}</p>
+            </div>
+
+            <div>
+              <p className="text-sm text-gray-500">Phone</p>
+              <p className="font-semibold">{form.getValues('patientPhone')}</p>
+            </div>
           </div>
 
           <div>
-            <p className="text-sm text-gray-500">Date & Time</p>
-            <p className="font-semibold">
-              {selectedDate && selectedTime
-                ? `${format(selectedDate, 'PPP')} at ${selectedTime}`
-                : 'Not selected'}
-            </p>
-          </div>
-
-          <div>
-            <p className="text-sm text-gray-500">Patient Name</p>
-            <p className="font-semibold">{form.getValues('patientName')}</p>
-          </div>
-
-          <div>
-            <p className="text-sm text-gray-500">Email</p>
-            <p className="font-semibold">{form.getValues('patientEmail')}</p>
-          </div>
-
-          <div>
-            <p className="text-sm text-gray-500">Phone</p>
-            <p className="font-semibold">{form.getValues('patientPhone')}</p>
+            <p className="text-sm text-gray-500">Symptoms</p>
+            <p className="font-semibold">{form.getValues('symptoms')}</p>
           </div>
         </div>
 
-        <div>
-          <p className="text-sm text-gray-500">Symptoms</p>
-          <p className="font-semibold">{form.getValues('symptoms')}</p>
+        <div className="space-y-4">
+          <div className="flex items-start space-x-3">
+            <input
+              type="checkbox"
+              id="agreeToTerms"
+              {...form.register('agreeToTerms')}
+              className="mt-1"
+            />
+            <Label htmlFor="agreeToTerms" className="font-normal">
+              I agree to the terms and conditions, and confirm that all information provided is accurate.
+              I understand that this appointment booking is subject to confirmation by the clinic.
+            </Label>
+          </div>
+          {form.formState.errors.agreeToTerms && (
+            <p className="text-sm text-error">{form.formState.errors.agreeToTerms.message}</p>
+          )}
+
+          <div className="flex items-start space-x-3">
+            <input
+              type="checkbox"
+              id="consent"
+              className="mt-1"
+            />
+            <Label htmlFor="consent" className="font-normal">
+              I consent to receiving appointment reminders and communications via email and SMS.
+            </Label>
+          </div>
+        </div>
+
+        <div className="flex justify-between">
+          <Button type="button" variant="outline" onClick={() => setStep(4)}>
+            <ChevronLeft className="mr-2 h-4 w-4" />
+            Previous
+          </Button>
+          <Button
+            onClick={form.handleSubmit(handleSubmit)}
+            disabled={loading}
+            className="bg-success hover:bg-success/90"
+          >
+            {loading ? 'Booking...' : 'Confirm Booking'}
+            <Check className="ml-2 h-4 w-4" />
+          </Button>
         </div>
       </div>
-
-      <div className="space-y-4">
-        <div className="flex items-start space-x-3">
-          <input
-            type="checkbox"
-            id="agreeToTerms"
-            {...form.register('agreeToTerms')}
-            className="mt-1"
-          />
-          <Label htmlFor="agreeToTerms" className="font-normal">
-            I agree to the terms and conditions, and confirm that all information provided is accurate.
-            I understand that this appointment booking is subject to confirmation by the clinic.
-          </Label>
-        </div>
-        {form.formState.errors.agreeToTerms && (
-          <p className="text-sm text-error">{form.formState.errors.agreeToTerms.message}</p>
-        )}
-
-        <div className="flex items-start space-x-3">
-          <input
-            type="checkbox"
-            id="consent"
-            className="mt-1"
-          />
-          <Label htmlFor="consent" className="font-normal">
-            I consent to receiving appointment reminders and communications via email and SMS.
-          </Label>
-        </div>
-      </div>
-
-      <div className="flex justify-between">
-        <Button type="button" variant="outline" onClick={() => setStep(3)}>
-          <ChevronLeft className="mr-2 h-4 w-4" />
-          Previous
-        </Button>
-        <Button
-          onClick={form.handleSubmit(handleSubmit)}
-          disabled={loading}
-          className="bg-success hover:bg-success/90"
-        >
-          {loading ? 'Booking...' : 'Confirm Booking'}
-          <Check className="ml-2 h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <>
@@ -558,6 +686,7 @@ export default function BookingWizard({ step, setStep, form }: BookingWizardProp
         {step === 2 && renderStep2()}
         {step === 3 && renderStep3()}
         {step === 4 && renderStep4()}
+        {step === 5 && renderStep5()}
       </form>
     </>
   )

@@ -2,9 +2,10 @@ import { z } from 'zod'
 
 // Create a base schema without agreeToTerms
 const baseAppointmentSchema = z.object({
-  appointmentType: z.enum(['IN_PERSON', 'ONLINE'], {
-    errorMap: () => ({ message: "Please select appointment type" })
-  }),
+  // ADD DOCTOR ID FIELD
+  doctorId: z.string().min(1, "Doctor selection is required"),
+  
+  appointmentType: z.enum(['IN_PERSON', 'ONLINE']),
   serviceType: z.enum([
     'GENERAL_CONSULTATION',
     'FOLLOW_UP',
@@ -15,9 +16,7 @@ const baseAppointmentSchema = z.object({
     'SKIN_TREATMENT',
     'ALLERGY_TREATMENT',
     'ONLINE_CONSULTATION'
-  ], {
-    errorMap: () => ({ message: "Please select service type" })
-  }),
+  ]),
   appointmentDate: z.string().refine((date) => {
     try {
       return !isNaN(Date.parse(date))

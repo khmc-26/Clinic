@@ -1,4 +1,4 @@
-// app/api/appointments/book/route.ts - FIXED VERSION
+// app/api/appointments/book/route.ts - UPDATED
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { appointmentSchema } from '@/lib/validations/appointment'
@@ -16,23 +16,28 @@ export async function POST(request: NextRequest) {
     const validatedData = appointmentSchema.parse(body)
     console.log('Validated data:', validatedData)
 
-    // Get doctor (assuming single doctor for now)
+    // Get SPECIFIC doctor from the request
     const doctor = await prisma.doctor.findFirst({
+      where: {
+        id: validatedData.doctorId,  // USE SELECTED DOCTOR ID
+        isActive: true,
+      },
       include: { user: true }
     })
 
     if (!doctor) {
-      console.error('Doctor not found')
+      console.error('Doctor not found or not active:', validatedData.doctorId)
       return NextResponse.json(
         { 
           success: false,
-          error: 'Doctor not found. Please contact clinic.' 
+          error: 'Selected doctor is not available. Please choose another doctor.' 
         },
         { status: 404 }
       )
     }
 
-    console.log('Found doctor:', doctor.id)
+    console.log('Found doctor:', doctor.id, doctor.user.name)
+
 
     // CRITICAL: Check if time slot is available
     const appointmentDateTime = new Date(validatedData.appointmentDate)

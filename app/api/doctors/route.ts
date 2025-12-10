@@ -15,15 +15,18 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Only admin can see all doctors
-    if (!session.user.isAdmin) {
-      return NextResponse.json(
-        { error: 'Admin access required' },
-        { status: 403 }
-      )
-    }
+    // Check for active filter
+    const searchParams = request.nextUrl.searchParams
+    const activeOnly = searchParams.get('active') === 'true'
 
+    // Build where clause
+    const whereClause: any = {}
+    if (activeOnly) {
+      whereClause.isActive = true
+      whereClause.deletedAt = null
+    }
     const doctors = await prisma.doctor.findMany({
+      where: whereClause,  // ADD FILTER
       include: {
         user: {
           select: {

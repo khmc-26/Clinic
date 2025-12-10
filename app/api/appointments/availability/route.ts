@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const dateParam = searchParams.get('date')
+    const doctorIdParam = searchParams.get('doctorId') // ADD THIS
 
     if (!dateParam) {
       return NextResponse.json(
@@ -14,11 +15,22 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    if (!doctorIdParam) {
+      return NextResponse.json(
+        { error: 'Doctor ID is required' },
+        { status: 400 }
+      )
+    }
+
     const date = new Date(dateParam)
     const dayOfWeek = date.getDay() // 0 = Sunday, 1 = Monday, etc.
 
-    // Get doctor's availability for this day
+    // Get SPECIFIC doctor's availability (not just first)
     const doctor = await prisma.doctor.findFirst({
+      where: {
+        id: doctorIdParam,  // FILTER BY DOCTOR ID
+        isActive: true,     // ONLY ACTIVE DOCTORS
+      },
       include: {
         availabilities: {
           where: {
@@ -29,10 +41,18 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    if (!doctor || doctor.availabilities.length === 0) {
+    if (!doctor) {
+      return NextResponse.json(
+        { error: 'Doctor not found or not active' },
+        { status: 404 }
+      )
+    }
+
+    if (doctor.availabilities.length === 0) {
       return NextResponse.json({
         success: true,
-        availableSlots: []
+        availableSlots: [],
+        message: 'Doctor has no availability for this day'
       })
     }
 
