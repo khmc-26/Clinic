@@ -1,4 +1,4 @@
-// app/api/doctors/route.ts
+// app/api/doctors/route.ts - UPDATE THIS
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
@@ -15,18 +15,22 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Check for active filter
+    // Check for active filter and show deleted filter
     const searchParams = request.nextUrl.searchParams
     const activeOnly = searchParams.get('active') === 'true'
+    const showDeleted = searchParams.get('showDeleted') === 'true'
 
-    // Build where clause
-    const whereClause: any = {}
+    // Build where clause - FILTER OUT SOFT DELETED BY DEFAULT
+    const whereClause: any = {
+      deletedAt: showDeleted ? { not: null } : null // Show only non-deleted by default
+    }
+    
     if (activeOnly) {
       whereClause.isActive = true
-      whereClause.deletedAt = null
     }
+
     const doctors = await prisma.doctor.findMany({
-      where: whereClause,  // ADD FILTER
+      where: whereClause,
       include: {
         user: {
           select: {
@@ -49,15 +53,15 @@ export async function GET(request: NextRequest) {
             id: true
           }
         },
-        availabilities: {  // ADD THIS
-      select: {
-        dayOfWeek: true,
-        startTime: true,
-        endTime: true,
-        isActive: true
-      }
-    }
-  },
+        availabilities: {
+          select: {
+            dayOfWeek: true,
+            startTime: true,
+            endTime: true,
+            isActive: true
+          }
+        }
+      },
       orderBy: {
         createdAt: 'desc'
       }
