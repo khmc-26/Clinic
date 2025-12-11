@@ -1,7 +1,16 @@
-// app/api/doctors/invitation/accept/route.ts
+// app/api/doctors/invitation/accept/route.ts - UPDATED WITH CONFLICT RESOLUTION
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcrypt'
+
+// Helper function to generate random color
+function getRandomColor() {
+  const colors = [
+    '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
+    '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1'
+  ]
+  return colors[Math.floor(Math.random() * colors.length)]
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,55 +49,167 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if email already has a user
+    // Check if email already has a user and their status
     const existingUser = await prisma.user.findUnique({
-      where: { email: invitation.email }
+      where: { email: invitation.email },
+      include: {
+        doctor: true,
+        patient: true
+      }
     })
 
-    if (existingUser) {
-      return NextResponse.json(
-        { error: 'User with this email already exists' },
-        { status: 400 }
-      )
-    }
+    let user = null
+    let doctor = null
+    let actionTaken = 'created' // created, converted, or restored
 
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        email: invitation.email,
-        name: name,
-        role: 'DOCTOR',
-        emailVerified: new Date(),
-        doctor: {
-          create: {
+    // Handle different user states
+    if (existingUser) {
+      // 1. Active doctor exists - should have been caught by validation
+      if (existingUser.doctor && !existingUser.doctor.deletedAt) {
+        return NextResponse.json(
+          { error: 'Doctor account already exists with this email' },
+          { status: 400 }
+        )
+      }
+
+      // 2. Deleted doctor exists - restore it
+      if (existingUser.doctor && existingUser.doctor.deletedAt) {
+        // Update user info
+        user = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            name: name,
+            role: 'DOCTOR'
+          }
+        })
+
+        // Restore deleted doctor
+        doctor = await prisma.doctor.update({
+          where: { id: existingUser.doctor.id },
+          data: {
+            deletedAt: null,
+            isActive: true,
+            isAdmin: invitation.role === 'ADMIN'
+          }
+        })
+        
+        actionTaken = 'restored'
+      }
+      // 3. Patient exists - convert to doctor
+      else if (existingUser.patient) {
+        // Update user info and role
+        user = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            name: name,
+            role: 'DOCTOR'
+          }
+        })
+
+        // Create doctor record for existing patient
+        doctor = await prisma.doctor.create({
+          data: {
+            userId: existingUser.id,
             specialization: 'Homoeopathy',
             qualifications: [],
             experience: 0,
-            consultationFee: 0, // Admin will set this later
+            consultationFee: 0,
             isAdmin: invitation.role === 'ADMIN',
             isActive: true,
-            colorCode: `#${Math.floor(Math.random()*16777215).toString(16)}` // Random color
+            colorCode: getRandomColor()
           }
-        }
-      },
-      include: {
-        doctor: true
+        })
+        
+        actionTaken = 'converted'
       }
-    })
+      // 4. User exists but no role - add doctor role
+      else {
+        // Update user info and role
+        user = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            name: name,
+            role: 'DOCTOR'
+          }
+        })
 
-    // Create doctor credentials
+        // Create doctor record
+        doctor = await prisma.doctor.create({
+          data: {
+            userId: existingUser.id,
+            specialization: 'Homoeopathy',
+            qualifications: [],
+            experience: 0,
+            consultationFee: 0,
+            isAdmin: invitation.role === 'ADMIN',
+            isActive: true,
+            colorCode: getRandomColor()
+          }
+        })
+        
+        actionTaken = 'upgraded'
+      }
+    } else {
+      // 5. No user exists - create new user and doctor
+      user = await prisma.user.create({
+        data: {
+          email: invitation.email,
+          name: name,
+          role: 'DOCTOR',
+          emailVerified: new Date(),
+          doctor: {
+            create: {
+              specialization: 'Homoeopathy',
+              qualifications: [],
+              experience: 0,
+              consultationFee: 0,
+              isAdmin: invitation.role === 'ADMIN',
+              isActive: true,
+              colorCode: getRandomColor()
+            }
+          }
+        },
+        include: {
+          doctor: true
+        }
+      })
+      
+      doctor = user.doctor
+    }
+
+    // Create or update doctor credentials
     const saltRounds = 12
     const passwordHash = await bcrypt.hash(password, saltRounds)
 
-    await prisma.doctorCredentials.create({
-      data: {
-        doctorId: user.doctor!.id,
-        email: invitation.email,
-        passwordHash,
-        saltRounds,
-        lastPasswordChange: new Date()
-      }
+    // Check if credentials already exist (for restored/converted doctors)
+    const existingCredentials = await prisma.doctorCredentials.findUnique({
+      where: { doctorId: doctor!.id }
     })
+
+    if (existingCredentials) {
+      // Update existing credentials with new password
+      await prisma.doctorCredentials.update({
+        where: { doctorId: doctor!.id },
+        data: {
+          passwordHash,
+          saltRounds,
+          lastPasswordChange: new Date(),
+          failedAttempts: 0,
+          lockedUntil: null
+        }
+      })
+    } else {
+      // Create new credentials
+      await prisma.doctorCredentials.create({
+        data: {
+          doctorId: doctor!.id,
+          email: invitation.email,
+          passwordHash,
+          saltRounds,
+          lastPasswordChange: new Date()
+        }
+      })
+    }
 
     // Mark invitation as accepted
     await prisma.doctorInvitation.update({
@@ -98,28 +219,35 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Create default availability (Monday-Friday, 9 AM - 5 PM)
-    const defaultAvailability = []
-    for (let day = 1; day <= 5; day++) { // Monday to Friday
-      defaultAvailability.push({
-        doctorId: user.doctor!.id,
-        dayOfWeek: day,
-        startTime: '09:00',
-        endTime: '17:00',
-        isActive: true,
-        slotDuration: 30,
-        maxPatients: 1
+    // Create default availability (Monday-Friday, 9 AM - 5 PM) if not exists
+    const existingAvailability = await prisma.doctorAvailability.findMany({
+      where: { doctorId: doctor!.id }
+    })
+
+    if (existingAvailability.length === 0) {
+      const defaultAvailability = []
+      for (let day = 1; day <= 5; day++) { // Monday to Friday
+        defaultAvailability.push({
+          doctorId: doctor!.id,
+          dayOfWeek: day,
+          startTime: '09:00',
+          endTime: '17:00',
+          isActive: true,
+          slotDuration: 30,
+          maxPatients: 1
+        })
+      }
+
+      await prisma.doctorAvailability.createMany({
+        data: defaultAvailability
       })
     }
 
-    await prisma.doctorAvailability.createMany({
-      data: defaultAvailability
-    })
-
     return NextResponse.json({
       success: true,
-      message: 'Account created successfully',
-      doctorId: user.doctor!.id
+      message: `Account ${actionTaken} successfully`,
+      doctorId: doctor!.id,
+      action: actionTaken
     })
 
   } catch (error: any) {

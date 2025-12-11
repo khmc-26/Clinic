@@ -274,13 +274,21 @@ export async function POST(request: NextRequest) {
     }
 
     // ==================== SEND CONFIRMATION EMAIL ====================
-    try {
-      await sendAppointmentConfirmationEmail(fullAppointment, googleMeetLink)
-      console.log('✅ Confirmation email sent')
-    } catch (emailError) {
-      console.error('Failed to send confirmation email:', emailError)
-      // Continue even if email fails
-    }
+try {
+  // Get doctor's email for BCC
+  const doctorEmail = fullAppointment.doctor?.user?.email
+  
+  // Pass doctor's email to the email function
+  await sendAppointmentConfirmationEmail(fullAppointment, googleMeetLink, doctorEmail)
+  console.log('✅ Confirmation email sent to:', {
+    patient: fullAppointment.patient.user.email,
+    doctor: doctorEmail,
+    clinic: process.env.CLINIC_EMAIL
+  })
+} catch (emailError) {
+  console.error('Failed to send confirmation email:', emailError)
+  // Continue even if email fails
+}
 
     // ==================== PREPARE RESPONSE ====================
     let successMessage = 'Appointment booked successfully'

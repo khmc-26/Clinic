@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { format } from 'date-fns'
 
+// Update the Doctor interface (around line 25)
 interface Doctor {
   id: string
   user: {
@@ -26,13 +27,14 @@ interface Doctor {
   specialization: string
   experience: number
   consultationFee: number
-  bio: string | null
-  qualifications: string[]
-  achievements: string[]
+  bio: string | null        // ADD THIS
+  qualifications: string[]  // ADD THIS
+  achievements: string[]    // ADD THIS
   isActive: boolean
   isAdmin: boolean
   colorCode: string
   createdAt: string
+  deletedAt: string | null
   appointments: { id: string }[]
   patientAssignments: { id: string }[]
   availabilities: {

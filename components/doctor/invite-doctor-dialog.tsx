@@ -1,7 +1,7 @@
-// components/doctor/invite-doctor-dialog.tsx
+// components/doctor/invite-doctor-dialog.tsx - UPDATED WITH CONFLICT RESOLUTION
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -21,12 +21,35 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Mail, User, Shield } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { 
+  Mail, 
+  User, 
+  Shield, 
+  AlertTriangle, 
+  CheckCircle,
+  UserCheck,
+  UserPlus
+} from 'lucide-react'
 
 interface InviteDoctorDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
+}
+
+// Type for email check response
+interface EmailCheckResponse {
+  exists: boolean
+  type?: 'PATIENT' | 'DOCTOR' | 'DELETED_DOCTOR'
+  user?: {
+    name: string | null
+    email: string
+  }
+  doctor?: {
+    isActive: boolean
+    deletedAt: string | null
+  }
 }
 
 export default function InviteDoctorDialog({
@@ -38,7 +61,39 @@ export default function InviteDoctorDialog({
   const [role, setRole] = useState<'DOCTOR' | 'ADMIN'>('DOCTOR')
   const [specialization, setSpecialization] = useState('Homoeopathy')
   const [loading, setLoading] = useState(false)
+  const [checkingEmail, setCheckingEmail] = useState(false)
   const [error, setError] = useState('')
+  const [emailStatus, setEmailStatus] = useState<EmailCheckResponse | null>(null)
+
+  // Check email when it changes
+  useEffect(() => {
+    const checkEmail = async () => {
+      if (!email || !email.includes('@')) {
+        setEmailStatus(null)
+        return
+      }
+
+      setCheckingEmail(true)
+      try {
+        const response = await fetch(`/api/doctors/check-email?email=${encodeURIComponent(email)}`)
+        if (response.ok) {
+          const data = await response.json()
+          setEmailStatus(data)
+        } else {
+          setEmailStatus(null)
+        }
+      } catch (error) {
+        console.error('Error checking email:', error)
+        setEmailStatus(null)
+      } finally {
+        setCheckingEmail(false)
+      }
+    }
+
+    // Debounce the email check
+    const timeoutId = setTimeout(checkEmail, 500)
+    return () => clearTimeout(timeoutId)
+  }, [email])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -52,7 +107,9 @@ export default function InviteDoctorDialog({
         body: JSON.stringify({
           email,
           role,
-          specialization
+          specialization,
+          
+          restoreDeleted: emailStatus?.type === 'DELETED_DOCTOR'
         })
       })
 
@@ -76,11 +133,53 @@ export default function InviteDoctorDialog({
     setRole('DOCTOR')
     setSpecialization('Homoeopathy')
     setError('')
+    setEmailStatus(null)
   }
+
+  const getEmailStatusMessage = () => {
+    if (!emailStatus) return null
+
+    switch (emailStatus.type) {
+      case 'PATIENT':
+        return {
+          variant: 'warning' as const,
+          icon: <UserCheck className="h-4 w-4" />,
+          title: 'Patient Account Found',
+          message: 'This email is registered as a patient. Would you like to convert them to a doctor?',
+          action: 'Send Invitation' // Changed from 'Convert to Doctor'
+        }
+      case 'DOCTOR':
+        return {
+          variant: 'error' as const,
+          icon: <AlertTriangle className="h-4 w-4" />,
+          title: 'Doctor Account Exists',
+          message: 'This email is already registered as a doctor.',
+          action: 'Cannot invite existing doctor'
+        }
+      case 'DELETED_DOCTOR':
+        return {
+          variant: 'info' as const,
+          icon: <UserPlus className="h-4 w-4" />,
+          title: 'Deleted Doctor Found',
+          message: 'This doctor was previously deleted. You can restore their account.',
+          action: 'Restore Account'
+        }
+      default:
+        return {
+          variant: 'success' as const,
+          icon: <CheckCircle className="h-4 w-4" />,
+          title: 'Email Available',
+          message: 'This email can be invited as a new doctor.',
+          action: 'Send Invitation'
+        }
+    }
+  }
+
+  const statusInfo = getEmailStatusMessage()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Invite New Doctor</DialogTitle>
@@ -109,8 +208,57 @@ export default function InviteDoctorDialog({
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={loading}
+                className={checkingEmail ? 'animate-pulse' : ''}
               />
+              {checkingEmail && (
+                <p className="text-xs text-gray-500">Checking email availability...</p>
+              )}
             </div>
+
+            {/* Email Status Display */}
+            {emailStatus && statusInfo && (
+              <div className={`p-4 rounded-lg border ${
+                statusInfo.variant === 'warning' ? 'bg-yellow-50 border-yellow-200' :
+                statusInfo.variant === 'error' ? 'bg-red-50 border-red-200' :
+                statusInfo.variant === 'info' ? 'bg-blue-50 border-blue-200' :
+                'bg-green-50 border-green-200'
+              }`}>
+                <div className="flex items-start space-x-3">
+                  <div className={`mt-0.5 ${
+                    statusInfo.variant === 'warning' ? 'text-yellow-600' :
+                    statusInfo.variant === 'error' ? 'text-red-600' :
+                    statusInfo.variant === 'info' ? 'text-blue-600' :
+                    'text-green-600'
+                  }`}>
+                    {statusInfo.icon}
+                  </div>
+                  <div className="flex-1">
+                    <h4 className={`font-medium ${
+                      statusInfo.variant === 'warning' ? 'text-yellow-800' :
+                      statusInfo.variant === 'error' ? 'text-red-800' :
+                      statusInfo.variant === 'info' ? 'text-blue-800' :
+                      'text-green-800'
+                    }`}>
+                      {statusInfo.title}
+                    </h4>
+                    <p className={`text-sm mt-1 ${
+                      statusInfo.variant === 'warning' ? 'text-yellow-700' :
+                      statusInfo.variant === 'error' ? 'text-red-700' :
+                      statusInfo.variant === 'info' ? 'text-blue-700' :
+                      'text-green-700'
+                    }`}>
+                      {statusInfo.message}
+                    </p>
+                    {emailStatus.user && (
+                      <div className="mt-2 text-xs bg-white/50 p-2 rounded">
+                        <p><strong>Name:</strong> {emailStatus.user.name || 'Not set'}</p>
+                        <p><strong>Email:</strong> {emailStatus.user.email}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>
@@ -121,6 +269,7 @@ export default function InviteDoctorDialog({
                 value={role}
                 onValueChange={(value: 'DOCTOR' | 'ADMIN') => setRole(value)}
                 className="flex space-x-4"
+                disabled={loading || emailStatus?.type === 'DOCTOR'}
               >
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="DOCTOR" id="role-doctor" />
@@ -145,7 +294,7 @@ export default function InviteDoctorDialog({
               <Select
                 value={specialization}
                 onValueChange={setSpecialization}
-                disabled={loading}
+                disabled={loading || emailStatus?.type === 'DOCTOR'}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select specialization" />
@@ -172,7 +321,7 @@ export default function InviteDoctorDialog({
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex flex-col sm:flex-row gap-2">
             <Button
               type="button"
               variant="outline"
@@ -181,11 +330,20 @@ export default function InviteDoctorDialog({
                 onOpenChange(false)
               }}
               disabled={loading}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Sending Invitation...' : 'Send Invitation'}
+            <Button 
+              type="submit" 
+              disabled={loading || emailStatus?.type === 'DOCTOR'}
+              className={`w-full sm:w-auto ${
+                emailStatus?.type === 'PATIENT' ? 'bg-yellow-600 hover:bg-yellow-700' :
+                emailStatus?.type === 'DELETED_DOCTOR' ? 'bg-blue-600 hover:bg-blue-700' :
+                ''
+              }`}
+            >
+              {loading ? 'Processing...' : statusInfo?.action || 'Send Invitation'}
             </Button>
           </DialogFooter>
         </form>

@@ -1,4 +1,4 @@
-// app/api/doctors/[id]/route.ts
+// app/api/doctors/[id]/route.ts - FIXED
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
@@ -20,13 +20,15 @@ export async function DELETE(
 
     const doctorId = params.id
 
-    // Cannot delete yourself
+    // Check if doctor exists
     const currentDoctor = await prisma.doctor.findUnique({
       where: { id: doctorId },
-      include: { user: true }
+      include: { 
+        user: true,
+        credentials: true
+      }
     })
 
-    // Check if doctor exists
     if (!currentDoctor) {
       return NextResponse.json(
         { error: 'Doctor not found' },
@@ -34,6 +36,7 @@ export async function DELETE(
       )
     }
 
+    // Cannot delete yourself
     if (currentDoctor.user.email === session.user.email) {
       return NextResponse.json(
         { error: 'Cannot delete your own account' },
@@ -57,12 +60,12 @@ export async function DELETE(
       )
     }
 
-    // Soft delete - set deletedAt timestamp
+    // SOFT DELETE ONLY THE DOCTOR (not cascade since schema doesn't support it)
     const doctor = await prisma.doctor.update({
       where: { id: doctorId },
       data: {
         deletedAt: new Date(),
-        isActive: false, // Also deactivate when deleted
+        isActive: false,
       },
       include: {
         user: {
@@ -96,7 +99,7 @@ export async function DELETE(
   }
 }
 
-// Optional: Add GET method for single doctor details if needed
+// GET method remains the same...
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -116,7 +119,7 @@ export async function GET(
     const doctor = await prisma.doctor.findUnique({
       where: { 
         id: doctorId,
-        deletedAt: null // Exclude soft deleted doctors
+        deletedAt: null
       },
       include: {
         user: {
