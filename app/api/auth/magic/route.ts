@@ -1,44 +1,130 @@
-// app/api/auth/magic/route.ts
+// app/api/auth/magic/route.ts - FIXED
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { validateMagicToken, createUserFromEmail } from '@/lib/auth'
-import { signIn } from 'next-auth/react'
 
+// Handle GET request for token validation
 export async function GET(request: NextRequest) {
   try {
-    const searchParams = request.nextUrl.searchParams
+    const { searchParams } = new URL(request.url)
     const token = searchParams.get('token')
     const email = searchParams.get('email')
 
     if (!token || !email) {
-      return NextResponse.redirect(new URL('/portal/login?error=invalid_link', request.url))
+      return NextResponse.json(
+        { error: 'Token and email are required' },
+        { status: 400 }
+      )
     }
 
-    // Validate token
-    const isValid = await validateMagicToken(email, token)
-    if (!isValid) {
-      return NextResponse.redirect(new URL('/portal/login?error=expired_link', request.url))
-    }
-
-    // Create or get user
-    const user = await createUserFromEmail(email)
-
-    // Clean up used token
-    await prisma.verificationToken.deleteMany({
-      where: { identifier: email, token }
+    // Find the verification token
+    const verificationToken = await prisma.verificationToken.findFirst({
+      where: {
+        identifier: email,
+        token,
+        expires: {
+          gt: new Date()
+        }
+      }
     })
 
-    // Redirect to portal with auth
-    const url = new URL('/portal', request.url)
-    url.searchParams.set('magic', 'true')
-    url.searchParams.set('email', email)
+    if (!verificationToken) {
+      return NextResponse.json(
+        { error: 'Invalid or expired token' },
+        { status: 400 }
+      )
+    }
 
-    // In a real implementation, you'd create a session here
-    // For now, we'll redirect and handle the session in the portal page
-    return NextResponse.redirect(url)
+    return NextResponse.json({
+      success: true,
+      email: email
+    })
 
-  } catch (error: any) {
-    console.error('Magic verification error:', error)
-    return NextResponse.redirect(new URL('/portal/login?error=verification_failed', request.url))
+  } catch (error) {
+    console.error('Magic link verification error:', error)
+    return NextResponse.json(
+      { error: 'Verification failed' },
+      { status: 500 }
+    )
+  }
+}
+
+// Handle POST request for token authentication
+export async function POST(request: NextRequest) {
+  try {
+    const { token } = await request.json()
+
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Token is required' },
+        { status: 400 }
+      )
+    }
+
+    // Find the verification token
+    const verificationToken = await prisma.verificationToken.findFirst({
+      where: {
+        token,
+        expires: {
+          gt: new Date()
+        }
+      }
+    })
+
+    if (!verificationToken) {
+      return NextResponse.json(
+        { error: 'Invalid or expired token' },
+        { status: 400 }
+      )
+    }
+
+    // Find or create user
+    let user = await prisma.user.findUnique({
+      where: { email: verificationToken.identifier },
+      include: {
+        patient: true,
+        doctor: true
+      }
+    })
+
+    if (!user) {
+      // Create new patient user
+      user = await prisma.user.create({
+        data: {
+          email: verificationToken.identifier,
+          role: 'PATIENT',
+          emailVerified: new Date(),
+          patient: {
+            create: {}
+          }
+        },
+        include: {
+          patient: true,
+          doctor: true
+        }
+      })
+    }
+
+    // Clean up the token
+    await prisma.verificationToken.delete({
+      where: {
+        identifier_token: {
+          identifier: verificationToken.identifier,
+          token: verificationToken.token
+        }
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      email: user.email,
+      userId: user.id
+    })
+
+  } catch (error) {
+    console.error('Magic link error:', error)
+    return NextResponse.json(
+      { error: 'Authentication failed' },
+      { status: 500 }
+    )
   }
 }

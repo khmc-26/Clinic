@@ -1,4 +1,4 @@
-// app/auth/magic/page.tsx
+// app/auth/magic/page.tsx - UPDATED
 'use client'
 
 import { useEffect } from 'react'
@@ -20,20 +20,31 @@ export default function MagicLinkPage() {
       }
 
       try {
-        // Verify magic link
-        const response = await fetch(`/api/auth/magic?token=${token}&email=${encodeURIComponent(email)}`)
+        // Verify magic link using POST
+        const response = await fetch('/api/auth/magic', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, email })
+        })
         
         if (response.ok) {
-          // Create session using NextAuth
-          await signIn('credentials', {
-            email,
-            callbackUrl: '/portal',
-            redirect: true
-          })
+          const data = await response.json()
+          
+          if (data.success) {
+            // Sign in with credentials (no password for magic link)
+            await signIn('credentials', {
+              email,
+              redirect: true,
+              callbackUrl: '/portal'
+            })
+          } else {
+            router.push('/portal/login?error=invalid_link')
+          }
         } else {
           router.push('/portal/login?error=invalid_link')
         }
       } catch (error) {
+        console.error('Magic link error:', error)
         router.push('/portal/login?error=verification_failed')
       }
     }

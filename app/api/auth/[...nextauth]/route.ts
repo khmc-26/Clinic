@@ -1,4 +1,4 @@
-// app/api/auth/[...nextauth]/route.ts - UPDATED
+// app/api/auth/[...nextauth]/route.ts - COMPLETE FIXED VERSION
 import NextAuth, { NextAuthOptions } from "next-auth"
 import { PrismaAdapter } from "@next-auth/prisma-adapter"
 import { prisma } from "@/lib/prisma"
@@ -20,8 +20,42 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("Email and password required")
+        if (!credentials?.email) {
+          throw new Error("Email is required")
+        }
+
+        // MAGIC LINK: Handle sign in without password
+        if (credentials.email && !credentials.password) {
+          // Check if user exists
+          const user = await prisma.user.findUnique({
+            where: { email: credentials.email },
+            include: {
+              doctor: true,
+              patient: true
+            }
+          })
+
+          if (!user) {
+            throw new Error("User not found")
+          }
+
+          // Check if this is a doctor trying to use magic link
+          if (user.doctor) {
+            throw new Error("Doctors must use password login")
+          }
+
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name || 'Patient',
+            role: user.role || 'PATIENT',
+            isDoctor: false
+          }
+        }
+
+        // DOCTOR LOGIN: Handle password authentication
+        if (!credentials?.password) {
+          throw new Error("Password is required for doctor login")
         }
 
         // Option 1: Try new credential system
@@ -144,108 +178,60 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account, profile }: any) {
       console.log('🔐 SignIn - User:', user?.email, 'Provider:', account?.provider)
       
+      // Handle Google OAuth
       if (account?.provider === 'google' && user?.email) {
-        // Check if this is a doctor email (admin or any registered doctor)
-        const existingDoctor = await prisma.doctor.findFirst({
-          where: {
-            user: {
-              email: user.email
-            }
-          },
-          include: {
-            user: true
-          }
-        })
-        
-        const isDoctorEmail = existingDoctor || user.email === 'drkavithahc@gmail.com'
-        
-        let existingUser = await prisma.user.findUnique({
-          where: { email: user.email },
-          include: {
-            doctor: true,
-            patient: true
-          }
-        })
-
-        if (!existingUser) {
-          // Create new user with proper role
-          const userData: any = {
-            email: user.email,
-            name: user.name,
-            image: user.image,
-            emailVerified: new Date(),
-            role: isDoctorEmail ? 'DOCTOR' : 'PATIENT'
-          }
-
-          if (isDoctorEmail) {
-            userData.doctor = {
-              create: {
-                specialization: 'Homoeopathy',
-                qualifications: ['BHMS', 'MD'],
-                experience: 15,
-                consultationFee: 300,
-                isAdmin: user.email === 'drkavithahc@gmail.com',
-                isActive: true,
-                colorCode: user.email === 'drkavithahc@gmail.com' ? '#EF4444' : '#3B82F6'
-              }
-            }
-          } else {
-            userData.patient = {
-              create: {}
-            }
-          }
-
-          existingUser = await prisma.user.create({
-            data: userData,
+        try {
+          // First check if user exists by email
+          const existingUser = await prisma.user.findUnique({
+            where: { email: user.email },
             include: {
+              accounts: true,
               doctor: true,
               patient: true
             }
           })
-        } else {
-          // Update existing user
-          await prisma.user.update({
-            where: { id: existingUser.id },
-            data: {
-              name: user.name || existingUser.name,
-              image: user.image || existingUser.image,
-              emailVerified: new Date(),
-              role: isDoctorEmail ? 'DOCTOR' : existingUser.role
+
+          // CRITICAL FIX: Handle existing users properly
+          if (existingUser) {
+            console.log('🔐 Existing user found:', existingUser.email)
+            
+            // Check if this OAuth account is already linked
+            const accountLinked = existingUser.accounts.some(acc => 
+              acc.provider === account.provider && 
+              acc.providerAccountId === account.providerAccountId
+            )
+
+            if (!accountLinked) {
+              console.log('🔐 Linking OAuth account to existing user')
+              // Force the user ID to be the existing user's ID
+              // This tells NextAuth to link the OAuth account to existing user
+              user.id = existingUser.id
             }
-          })
-
-          // Handle doctor record
-          if (isDoctorEmail && !existingUser.doctor) {
-            // Create doctor if doesn't exist
-            await prisma.doctor.create({
+            
+            // Store role information for JWT callback
+            (user as any).existingRole = existingUser.role;
+            (user as any).isDoctor = !!existingUser.doctor;
+            
+            // Update user info if needed (fire and forget - don't await)
+            prisma.user.update({
+              where: { id: existingUser.id },
               data: {
-                userId: existingUser.id,
-                specialization: 'Homoeopathy',
-                qualifications: ['BHMS', 'MD'],
-                experience: 15,
-                consultationFee: 300,
-                isAdmin: user.email === 'drkavithahc@gmail.com',
-                isActive: true,
-                colorCode: user.email === 'drkavithahc@gmail.com' ? '#EF4444' : '#3B82F6'
+                name: user.name || existingUser.name,
+                image: user.image || existingUser.image,
+                emailVerified: new Date()
               }
-            })
-          } else if (existingUser.doctor) {
-            // Update existing doctor to ensure correct status
-            await prisma.doctor.update({
-              where: { id: existingUser.doctor.id },
-              data: {
-                isAdmin: user.email === 'drkavithahc@gmail.com' ? true : existingUser.doctor.isAdmin,
-                isActive: true
-              }
-            })
+            }).catch(error => {
+              console.error('Failed to update user:', error)
+            });
           }
+          
+          // If no existing user, allow creation (PrismaAdapter will handle)
+          return true
+          
+        } catch (error) {
+          console.error('🔐 SignIn error:', error)
+          return false
         }
-
-        user.id = existingUser.id;
-        (user as any).role = existingUser.role;
-        (user as any).isDoctor = isDoctorEmail;
-        
-        console.log('🔐 Role assigned:', existingUser.role, 'isDoctor:', isDoctorEmail)
       }
 
       return true
@@ -256,9 +242,9 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id
         token.email = user.email
         token.name = user.name
-        token.role = (user as any).role
-        token.isDoctor = (user as any).isDoctor
-        token.isAdmin = user.role === 'ADMIN'  // ADD THIS LINE
+        token.role = (user as any).role || (user as any).existingRole || 'PATIENT'
+        token.isDoctor = (user as any).isDoctor || false
+        token.isAdmin = (user as any).role === 'ADMIN' || false
       }
 
       // For security, only set isDoctor if we have user object or can verify from DB
@@ -275,7 +261,24 @@ export const authOptions: NextAuthOptions = {
         if (doctor) {
           token.isDoctor = true
           token.role = doctor.isAdmin ? 'ADMIN' : 'DOCTOR'
-          token.isAdmin = doctor.isAdmin  // ADD THIS LINE
+          token.isAdmin = doctor.isAdmin
+        }
+      }
+
+      // Also check for other doctors
+      if (token.email && token.email !== 'drkavithahc@gmail.com' && !token.isDoctor) {
+        const doctor = await prisma.doctor.findFirst({
+          where: {
+            user: {
+              email: token.email
+            },
+            isActive: true
+          }
+        })
+        if (doctor) {
+          token.isDoctor = true
+          token.role = 'DOCTOR'
+          token.isAdmin = doctor.isAdmin
         }
       }
 
@@ -287,7 +290,7 @@ export const authOptions: NextAuthOptions = {
         email: token.email, 
         isDoctor: token.isDoctor,
         role: token.role, 
-        isAdmin: token.isAdmin  // ADD THIS LINE
+        isAdmin: token.isAdmin
       })
 
       return token
@@ -300,7 +303,7 @@ export const authOptions: NextAuthOptions = {
         session.user.name = token.name as string
         session.user.role = token.role as string
         session.user.isDoctor = token.isDoctor as boolean
-        session.user.isAdmin = token.isAdmin as boolean  // ADD THIS LINE
+        session.user.isAdmin = token.isAdmin as boolean
         // Final verification for admin doctor
         if (session.user.email === 'drkavithahc@gmail.com' && !session.user.isDoctor) {
           const doctor = await prisma.doctor.findFirst({
@@ -314,7 +317,7 @@ export const authOptions: NextAuthOptions = {
           if (doctor) {
             session.user.isDoctor = true
             session.user.role = doctor.isAdmin ? 'ADMIN' : 'DOCTOR'
-            session.user.isAdmin = doctor.isAdmin  // ADD THIS LINE
+            session.user.isAdmin = doctor.isAdmin
           }
         }
       }
@@ -323,7 +326,7 @@ export const authOptions: NextAuthOptions = {
         email: session.user?.email, 
         isDoctor: session.user?.isDoctor,
         role: session.user?.role,
-        isAdmin: session.user?.isAdmin  // ADD THIS LINE 
+        isAdmin: session.user?.isAdmin
       })
 
       return session
