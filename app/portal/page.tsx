@@ -1,12 +1,12 @@
-// app/portal/page.tsx - FIXED SIGN OUT
+// app/portal/page.tsx - UPDATED
 'use client'
 
-import { useSession, signOut } from 'next-auth/react' // Add signOut import
+import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { User, Calendar, LogOut } from 'lucide-react' // Add LogOut icon
+import { User, Calendar, LogOut, FileText } from 'lucide-react'
 
 export default function PortalPage() {
   const { data: session, status } = useSession()
@@ -36,7 +36,7 @@ export default function PortalPage() {
 
   const handleSignOut = async () => {
     await signOut({ 
-      callbackUrl: '/portal/login', // Redirect to login after sign out
+      callbackUrl: '/portal/login',
       redirect: true 
     })
   }
@@ -69,12 +69,22 @@ export default function PortalPage() {
                   Book New Appointment
                 </Button>
                 
-                <Button variant="outline" disabled className="w-full">
-                  View Appointments (Coming Soon)
+                <Button 
+                  variant="outline" 
+                  onClick={() => router.push('/portal/appointments')}
+                  className="w-full"
+                >
+                  <Calendar className="mr-2 h-4 w-4" />
+                  View Appointments
                 </Button>
                 
-                <Button variant="outline" disabled className="w-full">
-                  Medical Records (Coming Soon)
+                <Button 
+                  variant="outline" 
+                  onClick={() => router.push('/portal/medical-records')}
+                  className="w-full"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  Medical Records
                 </Button>
               </div>
             </div>
@@ -85,7 +95,7 @@ export default function PortalPage() {
               </p>
               <Button
                 variant="ghost"
-                onClick={handleSignOut} // Use the function, not router.push
+                onClick={handleSignOut}
                 className="text-gray-500"
               >
                 <LogOut className="mr-2 h-4 w-4" />
