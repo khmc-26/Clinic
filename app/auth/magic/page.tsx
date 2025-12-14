@@ -13,44 +13,52 @@ export default function MagicLinkPage() {
   const email = searchParams.get('email')
 
   useEffect(() => {
-    const handleMagicLink = async () => {
-      if (!token || !email) {
-        router.push('/portal/login?error=invalid_link')
-        return
-      }
+  const handleMagicLink = async () => {
+    if (!token || !email) {
+      router.push('/portal/login?error=invalid_link')
+      return
+    }
 
-      try {
-        // Verify magic link using POST
-        const response = await fetch('/api/auth/magic', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, email })
-        })
+    try {
+      // Verify magic link using POST
+      const response = await fetch('/api/auth/magic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, email })
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
         
-        if (response.ok) {
-          const data = await response.json()
+        if (data.success) {
+          // Sign in with credentials (no password for magic link)
+          const result = await signIn('credentials', {
+            email: data.email,
+            redirect: false, // Don't redirect automatically
+            callbackUrl: data.isDoctor ? '/dashboard' : '/portal'
+          })
           
-          if (data.success) {
-            // Sign in with credentials (no password for magic link)
-            await signIn('credentials', {
-              email,
-              redirect: true,
-              callbackUrl: '/portal'
-            })
+          if (result?.error) {
+            router.push('/portal/login?error=auth_failed')
+          } else if (result?.url) {
+            router.push(result.url)
           } else {
-            router.push('/portal/login?error=invalid_link')
+            router.push(data.isDoctor ? '/dashboard' : '/portal')
           }
         } else {
           router.push('/portal/login?error=invalid_link')
         }
-      } catch (error) {
-        console.error('Magic link error:', error)
-        router.push('/portal/login?error=verification_failed')
+      } else {
+        router.push('/portal/login?error=invalid_link')
       }
+    } catch (error) {
+      console.error('Magic link error:', error)
+      router.push('/portal/login?error=verification_failed')
     }
+  }
 
-    handleMagicLink()
-  }, [token, email, router])
+  handleMagicLink()
+}, [token, email, router])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">

@@ -175,67 +175,103 @@ export const authOptions: NextAuthOptions = {
     error: '/auth/error',
   },
   callbacks: {
-    async signIn({ user, account, profile }: any) {
-      console.log('🔐 SignIn - User:', user?.email, 'Provider:', account?.provider)
-      
-      // Handle Google OAuth
-      if (account?.provider === 'google' && user?.email) {
-        try {
-          // First check if user exists by email
-          const existingUser = await prisma.user.findUnique({
-            where: { email: user.email },
-            include: {
-              accounts: true,
-              doctor: true,
-              patient: true
+    async signIn({ user, account, profile, email }: any) {
+  console.log('🔐 SignIn - User:', user?.email, 'Provider:', account?.provider)
+  
+  // Handle Google OAuth
+  if (account?.provider === 'google' && user?.email) {
+    try {
+      // First check if user exists by email
+      const existingUser = await prisma.user.findUnique({
+        where: { email: user.email },
+        include: {
+          accounts: true,
+          doctor: true,
+          patient: true
+        }
+      })
+
+      // If user exists but OAuth account isn't linked
+      if (existingUser) {
+        console.log('🔐 Existing user found:', existingUser.email)
+        
+        // Check if this OAuth account is already linked
+        const accountLinked = existingUser.accounts.some(acc => 
+          acc.provider === account.provider && 
+          acc.providerAccountId === account.providerAccountId
+        )
+
+        if (!accountLinked) {
+          console.log('🔐 Linking OAuth account to existing user')
+          
+          // MANUALLY CREATE THE ACCOUNT LINK - THIS IS CRITICAL
+          await prisma.account.create({
+            data: {
+              userId: existingUser.id,
+              type: account.type,
+              provider: account.provider,
+              providerAccountId: account.providerAccountId,
+              access_token: account.access_token,
+              expires_at: account.expires_at,
+              token_type: account.token_type,
+              scope: account.scope,
+              id_token: account.id_token,
             }
           })
-
-          // CRITICAL FIX: Handle existing users properly
-          if (existingUser) {
-            console.log('🔐 Existing user found:', existingUser.email)
-            
-            // Check if this OAuth account is already linked
-            const accountLinked = existingUser.accounts.some(acc => 
-              acc.provider === account.provider && 
-              acc.providerAccountId === account.providerAccountId
-            )
-
-            if (!accountLinked) {
-              console.log('🔐 Linking OAuth account to existing user')
-              // Force the user ID to be the existing user's ID
-              // This tells NextAuth to link the OAuth account to existing user
-              user.id = existingUser.id
-            }
-            
-            // Store role information for JWT callback
-            (user as any).existingRole = existingUser.role;
-            (user as any).isDoctor = !!existingUser.doctor;
-            
-            // Update user info if needed (fire and forget - don't await)
-            prisma.user.update({
-              where: { id: existingUser.id },
-              data: {
-                name: user.name || existingUser.name,
-                image: user.image || existingUser.image,
-                emailVerified: new Date()
-              }
-            }).catch(error => {
-              console.error('Failed to update user:', error)
-            });
-          }
-          
-          // If no existing user, allow creation (PrismaAdapter will handle)
-          return true
-          
-        } catch (error) {
-          console.error('🔐 SignIn error:', error)
-          return false
         }
+        
+        // CRITICAL: Return the existing user ID so NextAuth uses it
+        user.id = existingUser.id;
+        
+        // Store role information for JWT callback
+        (user as any).existingRole = existingUser.role;
+        (user as any).isDoctor = !!existingUser.doctor;
+        
+        // Update user info if needed
+        await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            name: user.name || existingUser.name,
+            image: user.image || existingUser.image,
+            emailVerified: new Date()
+          }
+        });
+        
+        return true;
       }
-
+      
+      // If no existing user, allow creation (PrismaAdapter will handle)
       return true
-    },
+      
+    } catch (error) {
+      console.error('🔐 SignIn error:', error)
+      return false
+    }
+  }
+
+  // Handle magic link credentials
+  if (email?.verificationRequest) {
+    // Magic link flow - user is signing in via credentials without password
+    console.log('🔐 Magic link sign in attempt for:', user?.email)
+    
+    // For magic links, we need to find if user is a doctor
+    if (user?.email) {
+      const existingUser = await prisma.user.findUnique({
+        where: { email: user.email },
+        include: { doctor: true }
+      })
+      
+      if (existingUser?.doctor) {
+        console.log('🔐 Doctor trying to use magic link - denying')
+        return false // Doctors can't use magic links
+      }
+    }
+    
+    return true
+  }
+
+  return true
+},
 
     async jwt({ token, user, trigger, session }: any) {
       if (user) {
@@ -246,6 +282,20 @@ export const authOptions: NextAuthOptions = {
         token.isDoctor = (user as any).isDoctor || false
         token.isAdmin = (user as any).role === 'ADMIN' || false
       }
+      
+      if (user || trigger === 'signIn') {
+    // Determine if user is a doctor
+    const isDoctorUser = token.isDoctor || 
+                        token.email === 'drkavithahc@gmail.com' || 
+                        token.role === 'DOCTOR' || 
+                        token.role === 'ADMIN'
+    
+    if (isDoctorUser) {
+      token.redirectTo = '/dashboard'
+    } else {
+      token.redirectTo = '/portal'
+    }
+  }
 
       // For security, only set isDoctor if we have user object or can verify from DB
       if (token.email === 'drkavithahc@gmail.com' && !token.isDoctor) {
@@ -333,21 +383,27 @@ export const authOptions: NextAuthOptions = {
     },
 
     async redirect({ url, baseUrl }: any) {
-      console.log('🔐 Redirect callback - URL:', url, 'Base URL:', baseUrl)
-      
-      // If URL is a relative URL, make it absolute
-      if (url.startsWith('/')) {
-        return `${baseUrl}${url}`
-      }
-      
-      // If URL already has baseUrl, return as is
-      if (url.startsWith(baseUrl)) {
-        return url
-      }
-      
-      // Default fallback to home page
-      return baseUrl
-    }
+  console.log('🔐 Redirect callback - URL:', url, 'Base URL:', baseUrl)
+  
+  // Handle sign in redirects
+  if (url.includes('/api/auth/callback') || url.includes('/api/auth/signin')) {
+    // Default to home, will be overridden by role-based logic
+    return `${baseUrl}/`
+  }
+  
+  // If URL is a relative URL, make it absolute
+  if (url.startsWith('/')) {
+    return `${baseUrl}${url}`
+  }
+  
+  // If URL already has baseUrl, return as is
+  if (url.startsWith(baseUrl)) {
+    return url
+  }
+  
+  // Default fallback to home page
+  return baseUrl
+}
   },
   events: {
     async signIn({ user, account }: any) {

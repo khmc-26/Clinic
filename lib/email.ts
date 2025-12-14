@@ -159,8 +159,7 @@ export async function sendAppointmentConfirmationEmail(
 // Send magic link email
 export async function sendMagicLinkEmail(email: string, token: string) {
   try {
-    const magicLink = `${process.env.NEXTAUTH_URL}/api/auth/callback/email?token=${token}&email=${encodeURIComponent(email)}`
-
+    const magicLink = `${process.env.NEXTAUTH_URL}/auth/magic?token=${token}&email=${encodeURIComponent(email)}`
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #0E7C7B;">Sign in to Patient Portal</h2>
