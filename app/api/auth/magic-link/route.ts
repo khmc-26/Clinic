@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if email belongs to a doctor
-    const doctor = await prisma.doctor.findFirst({
+   /* const doctor = await prisma.doctor.findFirst({
       where: {
         user: {
           email: normalizedEmail
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
         { error: 'Doctors must use the doctor login page' },
         { status: 400 }
       )
-    }
+    }*/
 
     // Generate magic token
     const token = await generateMagicToken(normalizedEmail)

@@ -40,9 +40,9 @@ export const authOptions: NextAuthOptions = {
           }
 
           // Check if this is a doctor trying to use magic link
-          if (user.doctor) {
+          /*if (user.doctor) {
             throw new Error("Doctors must use password login")
-          }
+          }*/
 
           return {
             id: user.id,
