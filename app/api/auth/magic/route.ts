@@ -51,7 +51,14 @@ export async function GET(request: NextRequest) {
 // Handle POST request for token authentication
 export async function POST(request: NextRequest) {
   try {
-    const { token } = await request.json()
+    const { token, email } = await request.json() // Get both token AND email
+
+    if (!token || !email) {
+      return NextResponse.json(
+        { error: 'Token and email are required' },
+        { status: 400 }
+      )
+    }
 
     if (!token) {
       return NextResponse.json(
