@@ -1,4 +1,4 @@
-// lib/google-calendar.ts - FINAL WORKING VERSION
+// lib/google-calendar.ts - UPDATED WITH RETRY MECHANISM
 import { google } from 'googleapis'
 import { prisma } from './prisma'
 
@@ -36,22 +36,47 @@ export async function createCalendarEvent(appointmentId: string): Promise<{
   try {
     console.log('Creating calendar event for appointment:', appointmentId)
 
-    // Get appointment details
-    const appointment = await prisma.appointment.findUnique({
-      where: { id: appointmentId },
-      include: {
-        patient: { include: { user: true } },
-        doctor: { include: { user: true } }
+    // Try multiple times with delay (in case of database replication delay)
+    let appointment = null
+    let attempts = 0
+    const maxAttempts = 3
+    
+    while (!appointment && attempts < maxAttempts) {
+      try {
+        // Get appointment details
+        appointment = await prisma.appointment.findUnique({
+          where: { id: appointmentId },
+          include: {
+            patient: { include: { user: true } },
+            doctor: { include: { user: true } }
+          }
+        })
+        
+        if (!appointment && attempts < maxAttempts - 1) {
+          console.log(`Appointment not found, retrying in 1 second... (attempt ${attempts + 1}/${maxAttempts})`)
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+      } catch (dbError) {
+        console.error('Database error fetching appointment:', dbError)
       }
-    })
+      attempts++
+    }
 
     if (!appointment) {
+      console.error('Appointment not found after multiple attempts:', appointmentId)
       throw new Error('Appointment not found')
     }
+
+    console.log('✅ Appointment found:', appointment.id)
 
     // Format appointment date
     const startTime = new Date(appointment.appointmentDate)
     const endTime = new Date(startTime.getTime() + (appointment.duration || 30) * 60000)
+
+    // Safe substring to avoid undefined errors
+    const symptomsText = appointment.symptoms || ''
+    const symptomsPreview = symptomsText.substring(0, 200)
+    const symptomsEllipsis = symptomsText.length > 200 ? '...' : ''
 
     // SIMPLE EVENT - No conference data to avoid errors
     const event = {
@@ -63,7 +88,7 @@ export async function createCalendarEvent(appointmentId: string): Promise<{
 Patient: ${appointment.patient.user.name}
 Phone: ${appointment.patient.user.phone}
 Service: ${appointment.serviceType.replace(/_/g, ' ')}
-Symptoms: ${appointment.symptoms?.substring(0, 200)}${appointment.symptoms?.length > 200 ? '...' : ''}
+Symptoms: ${symptomsPreview}${symptomsEllipsis}
 
 Appointment ID: ${appointmentId}
       `.trim(),
@@ -225,7 +250,7 @@ export async function testGoogleCalendarConnection(): Promise<{
     return {
       success: true,
       message: '✅ Google Calendar connection successful',
-      calendarName: calendarInfo.data.summary,
+      calendarName: calendarInfo.data.summary || undefined,
       canCreateEvents: true
     }
   } catch (error: any) {

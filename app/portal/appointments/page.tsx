@@ -8,8 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Calendar, Clock, User, Video, XCircle, AlertCircle, Loader2, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import { Calendar, Clock, User, Video, XCircle, AlertCircle, Loader2, ArrowLeft, Users } from 'lucide-react'
 
 type Appointment = {
   id: string
@@ -23,6 +22,13 @@ type Appointment = {
   googleMeetLink?: string
   diagnosis?: string
   treatmentPlan?: string
+  familyMemberId?: string
+  familyMember?: {
+    id: string
+    name: string
+    relationship: string
+    email?: string
+  } | null
   doctor: {
     id: string
     name: string
@@ -48,7 +54,6 @@ export default function PatientAppointmentsPage() {
   const [cancellingId, setCancellingId] = useState<string | null>(null)
 
   useEffect(() => {
-    // Redirect to login if not authenticated
     if (sessionStatus === 'unauthenticated') {
       router.push('/portal/login')
     }
@@ -74,7 +79,6 @@ export default function PatientAppointmentsPage() {
       if (data.success) {
         setAppointments(data.appointments)
         
-        // Separate upcoming and past appointments
         const now = new Date()
         const upcoming = data.appointments.filter((apt: Appointment) => {
           const aptDate = new Date(apt.appointmentDate)
@@ -121,7 +125,6 @@ export default function PatientAppointmentsPage() {
       }
 
       if (data.success) {
-        // Refresh appointments
         await fetchAppointments()
         alert('Appointment cancelled successfully')
       }
@@ -133,21 +136,6 @@ export default function PatientAppointmentsPage() {
     }
   }
 
-  // Format date to IST
-  const formatDateToIST = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleString('en-IN', {
-      timeZone: 'Asia/Kolkata',
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
-
-  // Format just the date part
   const formatDateOnly = (dateString: string) => {
     const date = new Date(dateString)
     return date.toLocaleDateString('en-IN', {
@@ -159,7 +147,6 @@ export default function PatientAppointmentsPage() {
     })
   }
 
-  // Format just the time part
   const formatTimeOnly = (dateString: string) => {
     const date = new Date(dateString)
     return date.toLocaleTimeString('en-IN', {
@@ -169,7 +156,6 @@ export default function PatientAppointmentsPage() {
     })
   }
 
-  // Get status badge variant
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
       case 'PENDING':
@@ -185,9 +171,31 @@ export default function PatientAppointmentsPage() {
     }
   }
 
-  // Get status text
   const getStatusText = (status: string) => {
     return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
+  }
+
+  // Helper to display who the appointment is for
+  const getAppointmentForDisplay = (appointment: Appointment) => {
+    if (appointment.familyMember) {
+      return (
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1">
+            <Users className="h-3 w-3 text-green-600" />
+            <span className="font-medium">{appointment.familyMember.name}</span>
+          </div>
+          <Badge variant="outline" className="mt-1 text-xs w-fit bg-green-50 text-green-700 border-green-200">
+            {appointment.familyMember.relationship}
+          </Badge>
+        </div>
+      )
+    }
+    return (
+      <div className="flex items-center gap-1">
+        <User className="h-3 w-3 text-blue-600" />
+        <span className="font-medium">Yourself</span>
+      </div>
+    )
   }
 
   if (sessionStatus === 'loading') {
@@ -202,12 +210,12 @@ export default function PatientAppointmentsPage() {
   }
 
   if (!session) {
-    return null // Will redirect in useEffect
+    return null
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
           <Button
@@ -223,7 +231,7 @@ export default function PatientAppointmentsPage() {
             <div>
               <h1 className="text-3xl font-bold text-gray-900">My Appointments</h1>
               <p className="text-gray-600 mt-2">
-                Manage your upcoming and past appointments
+                Manage appointments for yourself and your family members
               </p>
             </div>
             
@@ -235,7 +243,7 @@ export default function PatientAppointmentsPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
@@ -281,6 +289,22 @@ export default function PatientAppointmentsPage() {
               </div>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Family Appointments</p>
+                  <p className="text-2xl font-bold mt-1">
+                    {appointments.filter(a => a.familyMember).length}
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Users className="h-5 w-5 text-purple-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Main Content */}
@@ -288,7 +312,7 @@ export default function PatientAppointmentsPage() {
           <CardHeader>
             <CardTitle>Appointment History</CardTitle>
             <CardDescription>
-              View and manage all your appointments
+              View appointments for yourself and your family members
             </CardDescription>
           </CardHeader>
           
@@ -334,6 +358,7 @@ export default function PatientAppointmentsPage() {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Date & Time</TableHead>
+                            <TableHead>For</TableHead>
                             <TableHead>Doctor</TableHead>
                             <TableHead>Type</TableHead>
                             <TableHead>Duration</TableHead>
@@ -351,9 +376,12 @@ export default function PatientAppointmentsPage() {
                                 </div>
                               </TableCell>
                               <TableCell>
+                                {getAppointmentForDisplay(appointment)}
+                              </TableCell>
+                              <TableCell>
                                 <div className="flex items-center gap-2">
                                   <User className="h-4 w-4 text-gray-500" />
-                                  <span>{appointment.doctor?.name || 'Unknown Doctor'}</span>
+                                  <span>{appointment.doctor?.name || 'Dr. Kavitha Thomas'}</span>
                                 </div>
                                 <span className="text-sm text-gray-500">{appointment.doctor?.specialization}</span>
                               </TableCell>
@@ -389,8 +417,7 @@ export default function PatientAppointmentsPage() {
                                   {appointment.status !== 'CANCELLED' && (
                                     <Button
                                       size="sm"
-                                      variant="default"
-                                      className="bg-red-600 hover:bg-red-700 text-white" // Add red color classes
+                                      variant="error"
                                       onClick={() => handleCancelAppointment(appointment.id)}
                                       disabled={cancellingId === appointment.id}
                                     >
@@ -426,6 +453,7 @@ export default function PatientAppointmentsPage() {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Date & Time</TableHead>
+                            <TableHead>For</TableHead>
                             <TableHead>Doctor</TableHead>
                             <TableHead>Type</TableHead>
                             <TableHead>Duration</TableHead>
@@ -443,9 +471,12 @@ export default function PatientAppointmentsPage() {
                                 </div>
                               </TableCell>
                               <TableCell>
+                                {getAppointmentForDisplay(appointment)}
+                              </TableCell>
+                              <TableCell>
                                 <div className="flex items-center gap-2">
                                   <User className="h-4 w-4 text-gray-500" />
-                                  <span>{appointment.doctor?.name || 'Unknown Doctor'}</span>
+                                  <span>{appointment.doctor?.name || 'Dr. Kavitha Thomas'}</span>
                                 </div>
                                 <span className="text-sm text-gray-500">{appointment.doctor?.specialization}</span>
                               </TableCell>
@@ -494,6 +525,9 @@ export default function PatientAppointmentsPage() {
               <p className="text-sm text-blue-700">
                 <strong>Cancellation Policy:</strong> Appointments must be cancelled at least 24 hours in advance.
                 Late cancellations may be subject to fees.
+              </p>
+              <p className="text-sm text-blue-700 mt-2">
+                <strong>Family Appointments:</strong> You can view and manage appointments booked for your family members.
               </p>
             </div>
           </div>

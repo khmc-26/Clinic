@@ -1,6 +1,6 @@
 // lib/email.ts
 import nodemailer from 'nodemailer'
-
+import {prisma} from './prisma'
 // Create reusable transporter
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_SERVER_HOST,
@@ -13,23 +13,11 @@ const transporter = nodemailer.createTransport({
 })
 
 // Test transporter
-export async function verifyEmailConnection() {
-  try {
-    await transporter.verify()
-    console.log('Email server connection successful')
-    return true
-  } catch (error) {
-    console.error('Email server connection failed:', error)
-    return false
-  }
-}
-
-// Send appointment confirmation email
-// Add this function or update existing one
 export async function sendAppointmentConfirmationEmail(
   appointment: any,
   meetLink?: string | null,
-  doctorEmail?: string // Add doctor email parameter
+  doctorEmail?: string,
+  patientName?: string
 ) {
   try {
     const appointmentDate = new Date(appointment.appointmentDate)
@@ -43,8 +31,24 @@ export async function sendAppointmentConfirmationEmail(
       timeZone: 'Asia/Kolkata'
     })
 
-    // Get doctor name - try to get from appointment or use default
+    // Get doctor name
     const doctorName = appointment.doctor?.user?.name || 'Dr. Kavitha Thomas'
+    
+    // Use provided patientName or fallback
+    const displayPatientName = patientName || appointment.patient?.user?.name || 'Patient'
+
+    // Get family member info if applicable
+    let familyMemberInfo = null
+    if (appointment.familyMemberId) {
+      try {
+        familyMemberInfo = await prisma.familyMember.findUnique({
+          where: { id: appointment.familyMemberId },
+          select: { name: true, relationship: true, email: true }
+        })
+      } catch (error) {
+        console.error('Error fetching family member:', error)
+      }
+    }
 
     const html = `
       <!DOCTYPE html>
@@ -62,21 +66,30 @@ export async function sendAppointmentConfirmationEmail(
           .footer { text-align: center; margin-top: 30px; color: #718096; font-size: 14px; }
           .meet-link { background: #f0fff4; border: 1px solid #c6f6d5; border-radius: 8px; padding: 15px; margin: 20px 0; }
           .notice { background: #e8f4fd; border: 1px solid #b3d9ff; border-radius: 8px; padding: 15px; margin: 20px 0; color: #0066cc; }
+          .family-member-badge { display: inline-block; background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-left: 8px; }
         </style>
       </head>
       <body>
         <div class="header">
-          <h1>Appointment Confirmed!</h1>
+          <h1>Appointment Confirmation!</h1>
           <p>Dr. Kavitha Thomas Homoeopathic Clinic</p>
         </div>
         
         <div class="content">
-          <p>Dear ${appointment.patient.user.name},</p>
+          <p>Dear ${displayPatientName},</p>
+          
+          ${familyMemberInfo ? 
+            `<p style="color: #059669; font-weight: 600;">
+              This appointment was booked for you by a family member.
+            </p>` 
+            : ''
+          }
           
           <p>Your appointment has been successfully booked. Here are your appointment details:</p>
           
           <div class="appointment-details">
             <h3>Appointment Details</h3>
+            <p><strong>Patient:</strong> ${displayPatientName}${familyMemberInfo ? ' <span class="family-member-badge">Family Member</span>' : ''}</p>
             <p><strong>Date & Time:</strong> ${formattedDate}</p>
             <p><strong>Appointment Type:</strong> ${appointment.appointmentType === 'ONLINE' ? 'Online Consultation' : 'In-Person Visit'}</p>
             <p><strong>Service:</strong> ${appointment.serviceType.replace(/_/g, ' ')}</p>
@@ -131,28 +144,50 @@ export async function sendAppointmentConfirmationEmail(
 
     // Prepare BCC recipients
     const bccRecipients = [
-      process.env.CLINIC_EMAIL, // Always include clinic email
-      doctorEmail               // Include specific doctor's email if provided
-    ].filter(Boolean) as string[]; // Remove undefined/null
+      process.env.CLINIC_EMAIL,
+      doctorEmail
+    ].filter((email): email is string => email !== undefined && email !== null)
+
+    // Determine recipient email
+    const recipientEmail = familyMemberInfo?.email || appointment.patient?.user?.email
+
+    if (!recipientEmail) {
+      console.error('No recipient email found for appointment:', appointment.id)
+      return false
+    }
 
     const mailOptions = {
       from: process.env.EMAIL_FROM,
-      to: appointment.patient.user.email,
-      bcc: bccRecipients.join(','), // Join array into comma-separated string
+      to: recipientEmail,
+      bcc: bccRecipients.join(','),
       subject: `Appointment Confirmation - Dr. Kavitha Thomas Homoeopathic Clinic`,
       html: html,
     }
 
     const info = await transporter.sendMail(mailOptions)
     console.log('Appointment confirmation email sent:', {
-      to: appointment.patient.user.email,
-      bcc: bccRecipients,
+      to: recipientEmail,
+      patientName: displayPatientName,
       messageId: info.messageId
     })
     return true
   } catch (error) {
     console.error('Failed to send appointment confirmation email:', error)
     return false
+  }
+}
+
+// Helper function to get family member email
+async function getFamilyMemberEmail(familyMemberId: string): Promise<string | null> {
+  try {
+    const familyMember = await prisma.familyMember.findUnique({
+      where: { id: familyMemberId },
+      select: { email: true }
+    })
+    return familyMember?.email || null
+  } catch (error) {
+    console.error('Error fetching family member email:', error)
+    return null
   }
 }
 

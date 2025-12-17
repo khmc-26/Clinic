@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       ]
     }
 
-    // Get appointments
+    // Get appointments with family member info
     const appointments = await prisma.appointment.findMany({
       where,
       include: {
@@ -68,6 +68,14 @@ export async function GET(request: NextRequest) {
                 email: true
               }
             }
+          }
+        },
+        familyMember: { // Add family member relation
+          select: {
+            id: true,
+            name: true,
+            relationship: true,
+            email: true
           }
         }
       },
@@ -92,6 +100,14 @@ export async function GET(request: NextRequest) {
       diagnosis: appointment.diagnosis,
       treatmentPlan: appointment.treatmentPlan,
       recommendations: appointment.recommendations,
+      bookedByUserId: appointment.bookedByUserId,
+      familyMemberId: appointment.familyMemberId,
+      familyMember: appointment.familyMember ? {
+        id: appointment.familyMember.id,
+        name: appointment.familyMember.name,
+        relationship: appointment.familyMember.relationship,
+        email: appointment.familyMember.email
+      } : null,
       doctor: appointment.doctor ? {
         id: appointment.doctor.id,
         name: appointment.doctor.user.name,

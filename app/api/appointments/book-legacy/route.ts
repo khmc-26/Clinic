@@ -1,7 +1,7 @@
 // app/api/appointments/book/route.ts - UPDATED
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { appointmentSchema } from '@/lib/validations/appointment'
+import { appointmentV2Schema } from '@/lib/validations/appointment-v2'
 import { sendAppointmentConfirmationEmail } from '@/lib/email'
 import { createCalendarEvent, generateRealGoogleMeet } from '@/lib/google-calendar'
 import { z } from 'zod'
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     console.log('Request body:', body)
     
-    const validatedData = appointmentSchema.parse(body)
+    const validatedData = appointmentV2Schema.parse(body)
     console.log('Validated data:', validatedData)
 
     // Get SPECIFIC doctor from the request

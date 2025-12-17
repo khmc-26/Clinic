@@ -1,4 +1,3 @@
-// prisma/schema.prisma - FIXED VERSION
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,6 +8,7 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// ==================== CORE USER MODEL ====================
 model User {
   id            String    @id @default(uuid())
   email         String    @unique
@@ -17,39 +17,94 @@ model User {
   role          String    @default("PATIENT") // PATIENT, DOCTOR, ADMIN
   emailVerified DateTime?
   image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
 
+  // === NEW: RATE LIMITING ===
+  lastBookingAttemptAt DateTime?
+  bookingAttemptCount  Int       @default(0)
+  bookingLimitResetAt  DateTime? // When the rate limit resets
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
   patient  Patient?
   doctor   Doctor?
   sessions Session[]
   accounts Account[]
 
+  // === NEW RELATIONS ===
+  bookedAppointments Appointment[] @relation("bookedBy")
+  auditLogs          AuditLog[]
+
   @@index([email])
+  @@index([role])
+  @@index([lastBookingAttemptAt])
 }
 
+// ==================== PATIENT MODEL ====================
 model Patient {
-  id               String   @id @default(uuid())
-  userId           String   @unique
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String  @id @default(uuid())
+  userId           String  @unique
+  user             User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   age              Int?
   gender           String?
   address          String?
-  medicalHistory   String?  @db.Text
+  medicalHistory   String? @db.Text
   allergies        String?
   emergencyContact String?
   bloodGroup       String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
 
-  appointments  Appointment[]
-  assignments   PatientDoctorAssignment[]
-  referrals     PatientReferral[]
-  medicalEvents PatientMedicalEvent[]
+  // NEW: Family tracking
+  primaryFamilyMemberId String? // Main family account holder ID (self-reference)
+  isPrimaryFamilyMember Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // UPDATE RELATIONS
+  familyMembers          FamilyMember[] // Family members this patient manages
+  appointments           Appointment[]             @relation("patientAppointments")
+  appointmentsBooked     Appointment[]             @relation("bookedByPatient") // Appointments they booked for others
+  assignments            PatientDoctorAssignment[]
+  referrals              PatientReferral[]
+  medicalEvents          PatientMedicalEvent[]
+  mergedFromAppointments Appointment[]             @relation("mergedToAppointments")
+  // Self-reference for primary family member
+  managedFamilyMembers   Patient[]                 @relation("FamilyManager")
+  primaryFamilyMember    Patient?                  @relation("FamilyManager", fields: [primaryFamilyMemberId], references: [id])
 
   @@index([userId])
+  @@index([primaryFamilyMemberId])
+  @@index([isPrimaryFamilyMember])
 }
 
+// ==================== FAMILY MEMBER MODEL ====================
+model FamilyMember {
+  id           String   @id @default(uuid())
+  patientId    String // The patient who owns/manages this family member
+  name         String
+  email        String?  @unique
+  phone        String?
+  relationship String // SPOUSE, CHILD, PARENT, OTHER
+  age          Int?
+  gender       String?
+  medicalNotes String?  @db.Text
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  patient                Patient       @relation(fields: [patientId], references: [id])
+  appointments           Appointment[] @relation("familyMemberAppointments")
+  mergedFromAppointments Appointment[] @relation("mergedToFamilyAppointments")
+
+  @@unique([patientId, email]) // Email must be unique per family
+  @@index([patientId])
+  @@index([email])
+  @@index([isActive])
+  @@index([relationship])
+}
+
+// ==================== DOCTOR MODEL ====================
 model Doctor {
   id              String   @id @default(uuid())
   userId          String   @unique
@@ -60,72 +115,69 @@ model Doctor {
   consultationFee Int      @default(300)
   bio             String?  @db.Text
   achievements    String[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
 
   // Status fields
   isAdmin    Boolean   @default(false)
   isActive   Boolean   @default(true)
   disabledAt DateTime?
   deletedAt  DateTime?
-  colorCode  String    @default("#3B82F6") // Default blue
+  colorCode  String    @default("#3B82F6")
 
+  // === NEW: DOCTOR EMAIL PROTECTION ===
+  canBookAsPatient Boolean @default(false) // Can doctors book appointments for themselves?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
   appointments   Appointment[]
   availabilities DoctorAvailability[]
+  credentials    DoctorCredentials?
 
-  // New relations
-  credentials        DoctorCredentials?
-  invitationsSent    DoctorInvitation[]        @relation("invitedByDoctor")
-  loginLogs          LoginLog[]
-  patientAssignments PatientDoctorAssignment[]
-  referralsSent      PatientReferral[]         @relation("referralFrom")
-  referralsReceived  PatientReferral[]         @relation("referralTo")
-  medicalEvents      PatientMedicalEvent[]
+  invitationsSent         DoctorInvitation[]        @relation("invitedByDoctor")
+  loginLogs               LoginLog[]
+  patientAssignments      PatientDoctorAssignment[]
+  referralsSent           PatientReferral[]         @relation("referralFrom")
+  referralsReceived       PatientReferral[]         @relation("referralTo")
+  medicalEvents           PatientMedicalEvent[]
+  referredFromAssignments PatientDoctorAssignment[] @relation("referredFromAssignments")
+  transferredFromEvents   PatientMedicalEvent[]     @relation("transferredFromEvents")
 
   @@index([userId])
   @@index([isAdmin])
   @@index([isActive])
+  @@index([canBookAsPatient])
 }
 
-model DoctorAvailability {
-  id           String   @id @default(uuid())
-  doctorId     String
-  doctor       Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  dayOfWeek    Int // 0=Sunday, 1=Monday, etc.
-  startTime    String // "09:00"
-  endTime      String // "17:00"
-  isActive     Boolean  @default(true)
-  slotDuration Int      @default(30) // minutes
-  maxPatients  Int      @default(1)
-  createdAt    DateTime @default(now())
-
-  @@unique([doctorId, dayOfWeek])
-  @@index([doctorId, dayOfWeek])
-}
-
+// ==================== APPOINTMENT MODEL ====================
 model Appointment {
   id        String  @id @default(uuid())
   patientId String
   doctorId  String
-  patient   Patient @relation(fields: [patientId], references: [id])
+  patient   Patient @relation(fields: [patientId], references: [id], name: "patientAppointments")
   doctor    Doctor  @relation(fields: [doctorId], references: [id])
 
+  // Basic appointment info
   appointmentDate DateTime
   appointmentType String   @default("IN_PERSON")
   status          String   @default("PENDING")
   serviceType     String   @default("GENERAL_CONSULTATION")
 
+  // Patient medical info
   symptoms          String? @db.Text
   previousTreatment String? @db.Text
   duration          Int     @default(30)
 
+  // Google integration
   googleMeetLink String?
   googleEventId  String?
 
+  // Doctor notes
   diagnosis       String? @db.Text
   treatmentPlan   String? @db.Text
   recommendations String? @db.Text
 
+  // Timestamps
   confirmedAt    DateTime?
   completedAt    DateTime?
   cancelledAt    DateTime?
@@ -133,11 +185,44 @@ model Appointment {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  // === NEW FIELDS FOR FAMILY BOOKING ===
+  bookedByUserId    String? // User who made the booking
+  bookedByPatientId String? // Patient record of the booker (if they're a patient)
+  familyMemberId    String? // If booking for family member
+
+  // === MERGE DETECTION FIELDS ===
+  originalPatientName    String? // Original name entered
+  originalPatientEmail   String? // Original email entered
+  originalPatientPhone   String? // Original phone entered
+  requiresMerge          Boolean   @default(false)
+  mergeResolvedAt        DateTime?
+  mergedToPatientId      String? // If merged to existing patient
+  mergedToFamilyMemberId String? // If merged to family member
+  mergeNotes             String?   @db.Text // Audit trail for merge
+
+  // === BOOKING METHOD ===
+  bookingMethod String  @default("DIRECT") // DIRECT, PORTAL, ADMIN
+  source        String? // Portal, Widget, etc.
+
+  // === UPDATE RELATIONS ===
+  bookedByUser         User?         @relation(fields: [bookedByUserId], references: [id], name: "bookedBy")
+  bookedByPatient      Patient?      @relation(fields: [bookedByPatientId], references: [id], name: "bookedByPatient")
+  familyMember         FamilyMember? @relation(fields: [familyMemberId], references: [id], name: "familyMemberAppointments")
+  mergedToPatient      Patient?      @relation(fields: [mergedToPatientId], references: [id], name: "mergedToAppointments")
+  mergedToFamilyMember FamilyMember? @relation(fields: [mergedToFamilyMemberId], references: [id], name: "mergedToFamilyAppointments")
+
   @@index([appointmentDate])
   @@index([status])
   @@index([patientId])
   @@index([doctorId])
+  @@index([bookedByUserId])
+  @@index([familyMemberId])
+  @@index([requiresMerge])
+  @@index([mergedToPatientId])
+  @@index([bookingMethod])
 }
+
+// ==================== EXISTING MODELS ====================
 
 model Account {
   id                String  @id @default(uuid())
@@ -187,7 +272,22 @@ model ContactMessage {
   createdAt DateTime  @default(now())
 }
 
-// Doctor credentials for secure login
+model DoctorAvailability {
+  id           String   @id @default(uuid())
+  doctorId     String
+  doctor       Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  dayOfWeek    Int // 0=Sunday, 1=Monday, etc.
+  startTime    String // "09:00"
+  endTime      String // "17:00"
+  isActive     Boolean  @default(true)
+  slotDuration Int      @default(30) // minutes
+  maxPatients  Int      @default(1)
+  createdAt    DateTime @default(now())
+
+  @@unique([doctorId, dayOfWeek])
+  @@index([doctorId, dayOfWeek])
+}
+
 model DoctorCredentials {
   id                 String    @id @default(uuid())
   doctorId           String    @unique
@@ -206,7 +306,6 @@ model DoctorCredentials {
   @@index([doctorId])
 }
 
-// Login audit log
 model LoginLog {
   id           String   @id @default(uuid())
   email        String
@@ -225,7 +324,6 @@ model LoginLog {
   @@index([createdAt])
 }
 
-// Doctor invitation system
 model DoctorInvitation {
   id         String    @id @default(uuid())
   email      String    @unique
@@ -243,28 +341,40 @@ model DoctorInvitation {
   @@index([expiresAt])
 }
 
-// Patient-Doctor assignment (CURRENT relationship)
+// ==================== PATIENT-DOCTOR ASSIGNMENT ====================
 model PatientDoctorAssignment {
-  id          String    @id @default(uuid())
-  patientId   String
-  doctorId    String
-  assignedAt  DateTime  @default(now())
-  assignedBy  String? // doctorId who assigned
-  isActive    Boolean   @default(true)
+  id         String   @id @default(uuid())
+  patientId  String
+  doctorId   String
+  assignedAt DateTime @default(now())
+  assignedBy String? // doctorId who assigned
+
+  // === ENHANCED STATUS TRACKING ===
+  status   String  @default("ACTIVE") // ACTIVE, REFERRED, TRANSFERRED, INACTIVE
+  isActive Boolean @default(true)
+
   endedAt     DateTime?
   endedBy     String? // doctorId who ended assignment
-  endedReason String? // "REFERRED", "MIGRATED", "DISABLED"
+  endedReason String? // "REFERRED", "TRANSFERRED", "PATIENT_REQUEST", "DOCTOR_CHANGE"
+
+  // === REFERRAL SPECIFIC ===
+  referredFromDoctorId String? // If this came from a referral
+  referredAt           DateTime?
 
   patient Patient @relation(fields: [patientId], references: [id])
   doctor  Doctor  @relation(fields: [doctorId], references: [id])
+
+  referredFromDoctor Doctor? @relation(fields: [referredFromDoctorId], references: [id], name: "referredFromAssignments")
 
   @@unique([patientId, doctorId, isActive])
   @@index([patientId])
   @@index([doctorId])
   @@index([isActive])
+  @@index([status])
+  @@index([referredFromDoctorId])
 }
 
-// Patient referral tracking
+// ==================== PATIENT REFERRAL ====================
 model PatientReferral {
   id           String    @id @default(uuid())
   patientId    String
@@ -287,23 +397,70 @@ model PatientReferral {
   @@index([status])
 }
 
-// Unified medical history (color-coded)
+// ==================== PATIENT MEDICAL EVENT ====================
 model PatientMedicalEvent {
-  id          String   @id @default(uuid())
+  id          String  @id @default(uuid())
   patientId   String
   doctorId    String
   eventType   String // "APPOINTMENT", "PRESCRIPTION", "NOTE", "DIAGNOSIS"
   eventId     String? // ID of appointment/prescription
   title       String
-  description String?  @db.Text
+  description String? @db.Text
   metadata    Json? // Flexible data storage
-  createdAt   DateTime @default(now())
 
-  patient Patient @relation(fields: [patientId], references: [id])
-  doctor  Doctor  @relation(fields: [doctorId], references: [id])
+  // === NEW: REFERRAL TRANSFER TRACKING ===
+  transferredFromDoctorId String?
+  transferredAt           DateTime?
+  isTransferred           Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+
+  patient               Patient @relation(fields: [patientId], references: [id])
+  doctor                Doctor  @relation(fields: [doctorId], references: [id])
+  transferredFromDoctor Doctor? @relation(fields: [transferredFromDoctorId], references: [id], name: "transferredFromEvents")
 
   @@index([patientId])
   @@index([doctorId])
   @@index([eventType])
   @@index([createdAt])
+  @@index([isTransferred])
+}
+
+// ==================== AUDIT LOG ====================
+model AuditLog {
+  id         String  @id @default(uuid())
+  action     String // CREATE, UPDATE, DELETE, MERGE, REFERRAL, TRANSFER, ACCESS, etc.
+  entityType String // APPOINTMENT, PATIENT, FAMILY_MEMBER, MEDICAL_EVENT, USER, DOCTOR, etc.
+  entityId   String?
+  userId     String?
+  userEmail  String?
+  userRole   String?
+
+  // Data changes
+  oldData Json?
+  newData Json?
+
+  // Request context
+  ipAddress     String?
+  userAgent     String?
+  requestPath   String?
+  requestMethod String?
+
+  // Additional context
+  metadata Json?
+
+  // Result
+  success      Boolean @default(true)
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([action])
+  @@index([entityType])
+  @@index([userId])
+  @@index([userEmail])
+  @@index([createdAt])
+  @@index([success])
 }

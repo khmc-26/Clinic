@@ -1,4 +1,4 @@
-// components/dashboard/dashboard-nav.tsx - UPDATED
+// components/dashboard/dashboard-nav.tsx - UPDATED with Availability
 'use client'
 
 import { useState } from 'react'
@@ -18,7 +18,8 @@ import {
   LogOut,
   Home,
   UserPlus,
-  UserCog
+  UserCog,
+  Clock // ADD THIS IMPORT
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -27,6 +28,7 @@ const adminNavItems = [
   { href: '/dashboard/appointments', label: 'Appointments', icon: Calendar },
   { href: '/dashboard/patients', label: 'Patients', icon: Users },
   { href: '/dashboard/prescriptions', label: 'Prescriptions', icon: FileText },
+  { href: '/dashboard/availability', label: 'Availability', icon: Clock }, // ADD THIS LINE
   { href: '/dashboard/doctors', label: 'Doctor Management', icon: UserCog },
   { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
@@ -37,9 +39,11 @@ const regularDoctorNavItems = [
   { href: '/dashboard/appointments', label: 'Appointments', icon: Calendar },
   { href: '/dashboard/patients', label: 'Patients', icon: Users },
   { href: '/dashboard/prescriptions', label: 'Prescriptions', icon: FileText },
+  { href: '/dashboard/availability', label: 'Availability', icon: Clock }, // ADD THIS LINE
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ]
 
+// Rest of the file remains exactly the same...
 export default function DashboardNav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const pathname = usePathname()
