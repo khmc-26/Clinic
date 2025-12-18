@@ -139,71 +139,112 @@ export async function POST(request: NextRequest) {
           break
         }
 
-        case 'SOMEONE_ELSE': {
-          // Book for new person (potential merge detection)
-          originalPatientName = validatedData.patientName!
-          originalPatientEmail = validatedData.patientEmail!
-          originalPatientPhone = validatedData.patientPhone!
+        // Update the merge detection section in /app/api/appointments/book-v2/route.ts
+// Add this after the existing "SOMEONE_ELSE" case
 
-          // Check for existing user with same email
-          const existingUser = await tx.user.findUnique({
-            where: { email: validatedData.patientEmail! }
-          })
+case 'SOMEONE_ELSE': {
+  // Book for new person (enhanced merge detection)
+  originalPatientName = validatedData.patientName!
+  originalPatientEmail = validatedData.patientEmail!.toLowerCase().trim()
+  originalPatientPhone = validatedData.patientPhone!
 
-          if (existingUser) {
-            // User exists - check if they have patient record
-            const existingPatient = await tx.patient.findUnique({
-              where: { userId: existingUser.id }
-            })
+  // ==================== ENHANCED MERGE DETECTION ====================
+  
+  // 1. Check for exact email match with logged-in user
+  if (originalPatientEmail === currentUser.email.toLowerCase()) {
+    patientId = currentUser.patient?.id || ''
+    requiresMerge = true
+    mergeNotes = `Email matches logged-in user: ${currentUser.email}`
+    
+    // Check if name is different
+    if (originalPatientName.toLowerCase() !== currentUser.name?.toLowerCase()) {
+      mergeNotes += ` (Name variation: "${originalPatientName}" vs "${currentUser.name}")`
+    }
+  }
+  // 2. Check for email match with existing family members
+  else {
+    const familyMemberWithEmail = await tx.familyMember.findFirst({
+      where: {
+        patientId: currentUser.patient?.id,
+        email: {
+          equals: originalPatientEmail,
+          mode: 'insensitive'
+        },
+        isActive: true
+      }
+    })
 
-            if (existingPatient) {
-              patientId = existingPatient.id
-              requiresMerge = true
-              mergeNotes = `Email matches existing user: ${existingUser.email}`
-              
-              // Check if it's the logged in user
-              if (existingUser.id === currentUser.id) {
-                mergeNotes += ' (Logged in user)'
-              }
-            } else {
-              // User exists but no patient record
-              const newPatient = await tx.patient.create({
-                data: { userId: existingUser.id }
-              })
-              patientId = newPatient.id
-              
-              // Update user info
-              const updateData: any = {}
-              if (validatedData.patientName) updateData.name = validatedData.patientName
-              if (validatedData.patientPhone) updateData.phone = validatedData.patientPhone
-              
-              await tx.user.update({
-                where: { id: existingUser.id },
-                data: updateData
-              })
-            }
-          } else {
-            // Create new user and patient
-            const newUser = await tx.user.create({
-              data: {
-                email: validatedData.patientEmail!,
-                name: validatedData.patientName!,
-                phone: validatedData.patientPhone || null,
-                role: 'PATIENT',
-                emailVerified: new Date()
-              }
-            })
+    if (familyMemberWithEmail) {
+      patientId = currentUser.patient?.id || ''
+      familyMemberId = familyMemberWithEmail.id
+      requiresMerge = true
+      mergeNotes = `Email matches existing family member: ${familyMemberWithEmail.name}`
+      
+      if (originalPatientName.toLowerCase() !== familyMemberWithEmail.name.toLowerCase()) {
+        mergeNotes += ` (Name variation: "${originalPatientName}" vs "${familyMemberWithEmail.name}")`
+      }
+    }
+    // 3. Check for existing user with same email
+    else {
+      const existingUser = await tx.user.findUnique({
+        where: { email: originalPatientEmail }
+      })
 
-            const newPatient = await tx.patient.create({
-              data: {
-                userId: newUser.id
-              }
-            })
-            
-            patientId = newPatient.id
+      if (existingUser) {
+        // User exists - check if they have patient record
+        const existingPatient = await tx.patient.findUnique({
+          where: { userId: existingUser.id }
+        })
+
+        if (existingPatient) {
+          patientId = existingPatient.id
+          requiresMerge = true
+          mergeNotes = `Email matches existing patient: ${existingUser.email}`
+          
+          if (originalPatientName.toLowerCase() !== existingUser.name?.toLowerCase()) {
+            mergeNotes += ` (Name variation: "${originalPatientName}" vs "${existingUser.name}")`
           }
-          break
+        } else {
+          // User exists but no patient record
+          const newPatient = await tx.patient.create({
+            data: { userId: existingUser.id }
+          })
+          patientId = newPatient.id
+          
+          // Update user info
+          const updateData: any = {}
+          if (validatedData.patientName) updateData.name = validatedData.patientName
+          if (validatedData.patientPhone) updateData.phone = validatedData.patientPhone
+          
+          await tx.user.update({
+            where: { id: existingUser.id },
+            data: updateData
+          })
         }
+      } else {
+        // Create new user and patient
+        const newUser = await tx.user.create({
+          data: {
+            email: originalPatientEmail,
+            name: originalPatientName,
+            phone: validatedData.patientPhone || null,
+            role: 'PATIENT',
+            emailVerified: new Date()
+          }
+        })
+
+        const newPatient = await tx.patient.create({
+          data: {
+            userId: newUser.id
+          }
+        })
+        
+        patientId = newPatient.id
+      }
+    }
+  }
+  break
+}
 
         default:
           throw new Error('Invalid booking type')

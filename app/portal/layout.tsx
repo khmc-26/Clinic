@@ -22,6 +22,7 @@ import {
   ChevronLeft
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import MergeNotificationBanner from '@/components/patient/merge-notification-banner'
 
 const portalNavItems = [
   { href: '/portal', label: 'Dashboard', icon: Home },
@@ -240,6 +241,7 @@ export default function PortalLayout({
       {/* Main Content */}
       <main className="pt-28 md:pt-32 pb-8 px-4">
         <div className="max-w-7xl mx-auto">
+          <MergeNotificationBanner />
           {children}
         </div>
       </main>
