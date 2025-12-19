@@ -81,21 +81,24 @@ export async function POST(
       let updatedFamilyMemberId = appointment.familyMemberId
 
       switch (validatedData.resolutionType) {
-        case 'SELF': {
-  // If keepSeparate is true, just mark as resolved without merging
+
+    case 'SELF': {
+  // Handle skip/keep separate
   if (validatedData.keepSeparate) {
-    mergedToPatientId = null
-    mergeResolutionNotes = 'Kept as separate record'
-    
-    // Just mark as resolved without changing anything
+    // KEEP SEPARATE: Don't change ANYTHING about the appointment
     const updatedAppointment = await tx.appointment.update({
       where: { id: appointmentId },
       data: {
         requiresMerge: false,
         mergeResolvedAt: new Date(),
+        // IMPORTANT: DO NOT change these fields
+        // patientId: appointment.patientId, // Keep original
+        // familyMemberId: appointment.familyMemberId, // Keep original
+        mergedToPatientId: null,
+        mergedToFamilyMemberId: null,
         mergeNotes: appointment.mergeNotes 
-          ? `${appointment.mergeNotes} | RESOLVED: ${mergeResolutionNotes}`
-          : `RESOLVED: ${mergeResolutionNotes}`
+          ? `${appointment.mergeNotes} | RESOLVED: Kept as separate record (no merge)`
+          : 'RESOLVED: Kept as separate record (no merge performed)'
       },
       include: {
         patient: {
@@ -114,6 +117,7 @@ export async function POST(
   
   // Update appointment with user's details
   updatedPatientId = currentPatient.id
+  // Don't change familyMemberId - it should remain null for self
   
   mergeResolutionNotes += ` (Appointment updated to match user: ${currentPatient.user.name})`
   break
@@ -152,34 +156,34 @@ export async function POST(
         }
 
         case 'NEW': {
-          // Add as new family member
-          if (!validatedData.patientName) {
-            throw new Error('Patient name is required for NEW resolution')
-          }
+  // Add as new family member
+  if (!validatedData.patientName) {
+    throw new Error('Patient name is required for NEW resolution')
+  }
 
-          // Create new family member with appointment info
-          const newFamilyMember = await tx.familyMember.create({
-            data: {
-              patientId: currentPatient.id,
-              name: validatedData.patientName,
-              email: appointment.originalPatientEmail || null,
-              phone: appointment.originalPatientPhone || null,
-              relationship: validatedData.relationship || 'OTHER',
-              age: validatedData.age || null,
-              gender: validatedData.gender || null,
-              medicalNotes: appointment.symptoms || null,
-              isActive: true
-            }
-          })
+  // FIXED: Create family member WITHOUT email (always null)
+  const newFamilyMember = await tx.familyMember.create({
+    data: {
+      patientId: currentPatient.id,
+      name: validatedData.patientName,
+      email: null, // ← NEVER copy appointment email
+      phone: null, // ← NEVER copy appointment phone
+      relationship: validatedData.relationship || 'OTHER',
+      age: validatedData.age || null,
+      gender: validatedData.gender || null,
+      medicalNotes: appointment.symptoms || null,
+      isActive: true
+    }
+  })
 
-          mergedToPatientId = currentPatient.id
-          mergedToFamilyMemberId = newFamilyMember.id
-          updatedPatientId = currentPatient.id
-          updatedFamilyMemberId = newFamilyMember.id
-          
-          mergeResolutionNotes = `Added as new family member: ${validatedData.patientName}`
-          break
-        }
+  mergedToPatientId = currentPatient.id
+  mergedToFamilyMemberId = newFamilyMember.id
+  updatedPatientId = currentPatient.id
+  updatedFamilyMemberId = newFamilyMember.id
+  
+  mergeResolutionNotes = `Added as new family member: ${validatedData.patientName}`
+  break
+}
       }
 
       // Update appointment with merge resolution

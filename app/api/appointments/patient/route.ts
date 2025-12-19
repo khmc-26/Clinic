@@ -40,7 +40,11 @@ export async function GET(request: NextRequest) {
     
     // Build where clause
     const where: any = {
-      patientId: patient.id
+      OR: [
+        { patientId: patient.id }, // Appointments where patient is the main patient
+        { bookedByPatientId: patient.id }, // Appointments booked by this patient for others
+        { mergedToPatientId: patient.id } // Appointments merged to this patient
+      ]
     }
 
     if (status === 'upcoming') {
@@ -48,15 +52,9 @@ export async function GET(request: NextRequest) {
       where.status = { not: 'CANCELLED' }
     } else if (status === 'past') {
       where.appointmentDate = { lt: now }
-    } else {
-      // Get all appointments
-      where.OR = [
-        { appointmentDate: { gte: now }, status: { not: 'CANCELLED' } },
-        { appointmentDate: { lt: now } }
-      ]
     }
 
-    // Get appointments with family member info
+    // Fetch appointments with all related data
     const appointments = await prisma.appointment.findMany({
       where,
       include: {
@@ -70,17 +68,46 @@ export async function GET(request: NextRequest) {
             }
           }
         },
-        familyMember: { // Add family member relation
+        familyMember: {
           select: {
             id: true,
             name: true,
             relationship: true,
             email: true
           }
+        },
+        // Include merge information
+        mergedToPatient: {
+          include: {
+            user: {
+              select: {
+                name: true,
+                email: true
+              }
+            }
+          }
+        },
+        mergedToFamilyMember: {
+          select: {
+            id: true,
+            name: true,
+            relationship: true
+          }
+        },
+        // Include patient for original appointment
+        patient: {
+          include: {
+            user: {
+              select: {
+                name: true,
+                email: true
+              }
+            }
+          }
         }
       },
       orderBy: {
-        appointmentDate: status === 'upcoming' ? 'asc' : 'desc'
+        createdAt: 'desc'
       },
       take: limit
     })
@@ -100,7 +127,12 @@ export async function GET(request: NextRequest) {
       diagnosis: appointment.diagnosis,
       treatmentPlan: appointment.treatmentPlan,
       recommendations: appointment.recommendations,
+      
+      // Booking info
       bookedByUserId: appointment.bookedByUserId,
+      bookedByPatientId: appointment.bookedByPatientId,
+      
+      // Family member info
       familyMemberId: appointment.familyMemberId,
       familyMember: appointment.familyMember ? {
         id: appointment.familyMember.id,
@@ -108,12 +140,36 @@ export async function GET(request: NextRequest) {
         relationship: appointment.familyMember.relationship,
         email: appointment.familyMember.email
       } : null,
+      
+      // Merge fields
+      originalPatientName: appointment.originalPatientName,
+      originalPatientEmail: appointment.originalPatientEmail,
+      originalPatientPhone: appointment.originalPatientPhone,
+      requiresMerge: appointment.requiresMerge,
+      mergeResolvedAt: appointment.mergeResolvedAt,
+      mergedToPatientId: appointment.mergedToPatientId,
+      mergedToFamilyMemberId: appointment.mergedToFamilyMemberId,
+      
+      // Merged info
+      mergedToPatient: appointment.mergedToPatient ? {
+        id: appointment.mergedToPatient.id,
+        name: appointment.mergedToPatient.user.name
+      } : null,
+      mergedToFamilyMember: appointment.mergedToFamilyMember ? {
+        id: appointment.mergedToFamilyMember.id,
+        name: appointment.mergedToFamilyMember.name,
+        relationship: appointment.mergedToFamilyMember.relationship
+      } : null,
+      
+      // Doctor info
       doctor: appointment.doctor ? {
         id: appointment.doctor.id,
         name: appointment.doctor.user.name,
         specialization: appointment.doctor.specialization,
         consultationFee: appointment.doctor.consultationFee
       } : null,
+      
+      // Timestamps
       createdAt: appointment.createdAt,
       updatedAt: appointment.updatedAt,
       confirmedAt: appointment.confirmedAt,
@@ -122,8 +178,12 @@ export async function GET(request: NextRequest) {
     }))
 
     // Separate upcoming and past
-    const upcoming = formattedAppointments.filter(a => new Date(a.appointmentDate) >= now && a.status !== 'CANCELLED')
-    const past = formattedAppointments.filter(a => new Date(a.appointmentDate) < now || a.status === 'CANCELLED')
+    const upcoming = formattedAppointments.filter(a => 
+      new Date(a.appointmentDate) >= now && a.status !== 'CANCELLED'
+    )
+    const past = formattedAppointments.filter(a => 
+      new Date(a.appointmentDate) < now || a.status === 'CANCELLED'
+    )
 
     return NextResponse.json({
       success: true,

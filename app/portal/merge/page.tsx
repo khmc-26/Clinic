@@ -14,13 +14,9 @@ import {
   Users, 
   Merge, 
   Calendar, 
-  Mail, 
-  Phone, 
   Loader2,
   ChevronLeft,
-  CheckCircle,
-  XCircle,
-  Clock
+  CheckCircle
 } from 'lucide-react'
 import MergeDialog from '@/components/patient/merge-dialog'
 
@@ -30,10 +26,8 @@ interface MergeAppointment {
   appointmentType: string
   serviceType: string
   status: string
-  symptoms?: string
   originalPatientName: string | null
   originalPatientEmail: string | null
-  originalPatientPhone: string | null
   requiresMerge: boolean
   mergeNotes: string | null
   mergeResolvedAt: string | null
@@ -47,23 +41,13 @@ interface MergeAppointment {
       id: string
       name: string | null
       email: string
-      phone: string | null
     }
   }
   
   familyMember: {
     id: string
     name: string
-    email: string | null
     relationship: string
-  } | null
-  
-  bookedByPatient: {
-    id: string
-    user: {
-      name: string | null
-      email: string
-    }
   } | null
   
   doctor: {
@@ -179,9 +163,9 @@ export default function MergePage() {
   const getMergeTypeText = (type: string) => {
     switch (type) {
       case 'SELF_MATCH':
-        return 'Matches Your Account'
+        return 'Your Account'
       case 'FAMILY_MATCH':
-        return 'Matches Family Member'
+        return 'Family Member'
       case 'EXISTING_PATIENT':
         return 'Existing Patient'
       default:
@@ -194,7 +178,13 @@ export default function MergePage() {
     return date.toLocaleDateString('en-IN', {
       day: 'numeric',
       month: 'short',
-      year: 'numeric',
+      year: 'numeric'
+    })
+  }
+
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleTimeString('en-IN', {
       hour: '2-digit',
       minute: '2-digit'
     })
@@ -213,7 +203,7 @@ export default function MergePage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header - Mobile Responsive */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <Button
@@ -222,100 +212,103 @@ export default function MergePage() {
             onClick={() => router.push('/portal')}
           >
             <ChevronLeft className="mr-2 h-4 w-4" />
-            Back to Portal
+            <span className="hidden sm:inline">Back to Portal</span>
+            <span className="sm:hidden">Back</span>
           </Button>
           
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Merge Requests</h1>
-            <p className="text-gray-600 mt-2">
-              Resolve appointment booking conflicts and merge duplicate records
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Merge Requests</h1>
+            <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">
+              Resolve appointment booking conflicts
             </p>
           </div>
         </div>
         
-        <div className="flex items-center space-x-3">
-          <Badge variant="outline" className="text-lg px-4 py-1">
+        <div className="flex items-center space-x-2">
+          <Badge variant="outline" className="text-base md:text-lg px-3 md:px-4 py-1">
             {pendingAppointments.length} Pending
           </Badge>
           <Button 
             variant="outline"
             onClick={() => router.push('/portal/appointments')}
+            className="h-9 md:h-10"
           >
-            <Calendar className="mr-2 h-4 w-4" />
-            View All Appointments
+            <Calendar className="mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" />
+            <span className="hidden md:inline">View Appointments</span>
+            <span className="md:hidden">Appointments</span>
           </Button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
+      {/* Stats - Mobile Responsive */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <Card className="col-span-1">
+          <CardContent className="pt-4 md:pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Pending Merges</p>
-                <p className="text-2xl font-bold mt-1">{pendingAppointments.length}</p>
+                <p className="text-xs md:text-sm text-gray-600">Pending</p>
+                <p className="text-xl md:text-2xl font-bold mt-1">{pendingAppointments.length}</p>
               </div>
-              <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
-                <AlertCircle className="h-5 w-5 text-amber-600" />
+              <div className="h-8 w-8 md:h-10 md:w-10 rounded-full bg-amber-100 flex items-center justify-center">
+                <AlertCircle className="h-4 w-4 md:h-5 md:w-5 text-amber-600" />
               </div>
             </div>
           </CardContent>
         </Card>
         
-        <Card>
-          <CardContent className="pt-6">
+        <Card className="col-span-1">
+          <CardContent className="pt-4 md:pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Resolved</p>
-                <p className="text-2xl font-bold mt-1">{resolvedAppointments.length}</p>
+                <p className="text-xs md:text-sm text-gray-600">Resolved</p>
+                <p className="text-xl md:text-2xl font-bold mt-1">{resolvedAppointments.length}</p>
               </div>
-              <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
-                <CheckCircle className="h-5 w-5 text-green-600" />
+              <div className="h-8 w-8 md:h-10 md:w-10 rounded-full bg-green-100 flex items-center justify-center">
+                <CheckCircle className="h-4 w-4 md:h-5 md:w-5 text-green-600" />
               </div>
             </div>
           </CardContent>
         </Card>
         
-        <Card>
-          <CardContent className="pt-6">
+        <Card className="col-span-1">
+          <CardContent className="pt-4 md:pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Self Matches</p>
-                <p className="text-2xl font-bold mt-1">
+                <p className="text-xs md:text-sm text-gray-600">Self Matches</p>
+                <p className="text-xl md:text-2xl font-bold mt-1">
                   {pendingAppointments.filter(a => getMergeType(a) === 'SELF_MATCH').length}
                 </p>
               </div>
-              <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                <User className="h-5 w-5 text-blue-600" />
+              <div className="h-8 w-8 md:h-10 md:w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <User className="h-4 w-4 md:h-5 md:w-5 text-blue-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="pt-6">
+        <Card className="col-span-1">
+          <CardContent className="pt-4 md:pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Family Matches</p>
-                <p className="text-2xl font-bold mt-1">
+                <p className="text-xs md:text-sm text-gray-600">Family Matches</p>
+                <p className="text-xl md:text-2xl font-bold mt-1">
                   {pendingAppointments.filter(a => getMergeType(a) === 'FAMILY_MATCH').length}
                 </p>
               </div>
-              <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
-                <Users className="h-5 w-5 text-green-600" />
+              <div className="h-8 w-8 md:h-10 md:w-10 rounded-full bg-green-100 flex items-center justify-center">
+                <Users className="h-4 w-4 md:h-5 md:w-5 text-green-600" />
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Tabs */}
+      {/* Main Content */}
       <Card>
         <CardHeader>
-          <CardTitle>Merge Resolution</CardTitle>
-          <CardDescription>
-            Review and resolve appointment booking conflicts. Merge appointments to the correct patient record.
+          <CardTitle className="text-lg md:text-xl">Merge Resolution</CardTitle>
+          <CardDescription className="text-sm md:text-base">
+            Review and resolve appointment booking conflicts
           </CardDescription>
         </CardHeader>
         
@@ -329,20 +322,20 @@ export default function MergePage() {
           ) : pendingAppointments.length === 0 && resolvedAppointments.length === 0 ? (
             <div className="text-center py-12">
               <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No merge requests found</h3>
-              <p className="text-gray-600 mb-6">All appointments are properly associated with patient records.</p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No merge requests</h3>
+              <p className="text-gray-600 mb-6">All appointments are properly associated.</p>
               <Button onClick={() => router.push('/book')}>
                 <Calendar className="mr-2 h-4 w-4" />
-                Book New Appointment
+                Book Appointment
               </Button>
             </div>
           ) : (
             <div className="space-y-8">
-              {/* Pending Merges Section */}
+              {/* Pending Merges Section - Simplified */}
               {pendingAppointments.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-semibold">Pending Merge Requests</h3>
+                    <h3 className="text-lg md:text-xl font-semibold">Pending Requests</h3>
                     <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
                       {pendingAppointments.length} to resolve
                     </Badge>
@@ -352,11 +345,10 @@ export default function MergePage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Appointment Details</TableHead>
-                          <TableHead>Original Information</TableHead>
-                          <TableHead>Detected Match</TableHead>
-                          <TableHead>Created</TableHead>
-                          <TableHead className="text-right">Action</TableHead>
+                          <TableHead className="w-1/3">Appointment</TableHead>
+                          <TableHead className="w-1/4">Original Name</TableHead>
+                          <TableHead className="w-1/4">Detected As</TableHead>
+                          <TableHead className="w-1/6 text-right">Action</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -366,58 +358,28 @@ export default function MergePage() {
                             <TableRow key={appointment.id} className="bg-amber-50/50">
                               <TableCell>
                                 <div className="space-y-1">
-                                  <div className="flex items-center">
-                                    <Calendar className="h-3 w-3 mr-1 text-gray-500" />
-                                    <span className="font-medium">
-                                      {formatDate(appointment.appointmentDate)}
-                                    </span>
+                                  <div className="font-medium text-sm">
+                                    {formatDate(appointment.appointmentDate)}
                                   </div>
-                                  <div className="text-sm text-gray-600">
-                                    {appointment.doctor.user.name} • {appointment.serviceType}
+                                  <div className="text-xs text-gray-600">
+                                    {formatTime(appointment.appointmentDate)} • {appointment.doctor.user.name}
                                   </div>
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <div className="space-y-1">
-                                  <div className="flex items-center">
-                                    <User className="h-3 w-3 mr-1 text-gray-500" />
-                                    <span className="font-medium">{appointment.originalPatientName}</span>
-                                  </div>
-                                  {appointment.originalPatientEmail && (
-                                    <div className="flex items-center text-sm">
-                                      <Mail className="h-3 w-3 mr-1 text-gray-500" />
-                                      <span>{appointment.originalPatientEmail}</span>
-                                    </div>
-                                  )}
-                                  {appointment.originalPatientPhone && (
-                                    <div className="flex items-center text-sm">
-                                      <Phone className="h-3 w-3 mr-1 text-gray-500" />
-                                      <span>{appointment.originalPatientPhone}</span>
-                                    </div>
-                                  )}
-                                </div>
+                                <div className="font-medium text-sm">{appointment.originalPatientName}</div>
                               </TableCell>
                               <TableCell>
-                                <div className="space-y-1">
-                                  <Badge variant="outline" className={getMergeTypeColor(mergeType)}>
-                                    {getMergeTypeText(mergeType)}
-                                  </Badge>
-                                  {appointment.mergeNotes && (
-                                    <p className="text-xs text-gray-600 mt-1">{appointment.mergeNotes}</p>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center text-sm text-gray-600">
-                                  <Clock className="h-3 w-3 mr-1" />
-                                  {new Date(appointment.createdAt).toLocaleDateString()}
-                                </div>
+                                <Badge variant="outline" className={getMergeTypeColor(mergeType)}>
+                                  {getMergeTypeText(mergeType)}
+                                </Badge>
                               </TableCell>
                               <TableCell className="text-right">
                                 <Button
                                   size="sm"
                                   onClick={() => handleResolveMerge(appointment)}
                                   disabled={resolvingId === appointment.id}
+                                  className="h-8 text-xs"
                                 >
                                   {resolvingId === appointment.id ? (
                                     <Loader2 className="mr-1 h-3 w-3 animate-spin" />
@@ -436,11 +398,11 @@ export default function MergePage() {
                 </div>
               )}
 
-              {/* Resolved Merges Section */}
+              {/* Resolved Merges Section - Simplified */}
               {resolvedAppointments.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-semibold">Resolved Merges</h3>
+                    <h3 className="text-lg md:text-xl font-semibold">Resolved Merges</h3>
                     <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                       {resolvedAppointments.length} resolved
                     </Badge>
@@ -451,9 +413,8 @@ export default function MergePage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Appointment</TableHead>
-                          <TableHead>Original Info</TableHead>
+                          <TableHead>Original Name</TableHead>
                           <TableHead>Merged To</TableHead>
-                          <TableHead>Resolved On</TableHead>
                           <TableHead>Status</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -462,25 +423,19 @@ export default function MergePage() {
                           <TableRow key={appointment.id}>
                             <TableCell>
                               <div className="space-y-1">
-                                <div className="font-medium">
-                                  {new Date(appointment.appointmentDate).toLocaleDateString()}
-                                </div>
-                                <div className="text-sm text-gray-600">
-                                  {appointment.doctor.user.name}
+                                <div className="font-medium text-sm">
+                                  {formatDate(appointment.appointmentDate)}
                                 </div>
                               </div>
                             </TableCell>
                             <TableCell>
-                              <div className="text-sm">
-                                <div className="font-medium">{appointment.originalPatientName}</div>
-                                <div className="text-gray-600">{appointment.originalPatientEmail}</div>
-                              </div>
+                              <div className="text-sm font-medium">{appointment.originalPatientName}</div>
                             </TableCell>
                             <TableCell>
                               {appointment.mergedToPatientId && (
                                 <div className="flex items-center text-sm">
                                   <User className="h-3 w-3 mr-1 text-green-600" />
-                                  <span>Patient Record</span>
+                                  <span>Your Account</span>
                                 </div>
                               )}
                               {appointment.mergedToFamilyMemberId && appointment.familyMember && (
@@ -489,12 +444,6 @@ export default function MergePage() {
                                   <span>{appointment.familyMember.name}</span>
                                 </div>
                               )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="text-sm text-gray-600">
-                                {appointment.mergeResolvedAt && 
-                                  new Date(appointment.mergeResolvedAt).toLocaleDateString()}
-                              </div>
                             </TableCell>
                             <TableCell>
                               <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
@@ -513,20 +462,14 @@ export default function MergePage() {
         </CardContent>
       </Card>
 
-      {/* Info Box */}
-      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+      {/* Simplified Info Box */}
+      <div className="p-3 md:p-4 bg-blue-50 border border-blue-200 rounded-lg">
         <div className="flex items-start">
-          <AlertCircle className="h-5 w-5 text-blue-600 mr-2 flex-shrink-0 mt-0.5" />
-          <div className="space-y-2">
-            <p className="text-sm text-blue-700">
-              <strong>Why do merge requests occur?</strong> When booking appointments, 
-              if the system detects a mismatch between the provided information and existing records, 
-              it creates a merge request to prevent duplicate patient records.
-            </p>
-            <p className="text-sm text-blue-700">
-              <strong>How to resolve:</strong> Review each request and choose whether to:
-              1) Merge to your own account, 2) Merge to a family member, or 
-              3) Keep as a separate patient record.
+          <AlertCircle className="h-4 w-4 md:h-5 md:w-5 text-blue-600 mr-2 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs md:text-sm text-blue-700">
+              <strong>Why merge requests occur:</strong> When booking with your email but a different name, 
+              the system creates a merge request to prevent duplicate records.
             </p>
           </div>
         </div>

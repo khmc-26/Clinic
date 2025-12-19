@@ -54,8 +54,6 @@ export default function FamilyMemberDialog({
   
   const [formData, setFormData] = useState({
     name: '',
-    email: '',
-    phone: '',
     relationship: 'SPOUSE',
     age: '',
     gender: '',
@@ -66,8 +64,6 @@ export default function FamilyMemberDialog({
     if (member) {
       setFormData({
         name: member.name || '',
-        email: member.email || '',
-        phone: member.phone || '',
         relationship: member.relationship || 'SPOUSE',
         age: member.age?.toString() || '',
         gender: member.gender || '',
@@ -76,8 +72,6 @@ export default function FamilyMemberDialog({
     } else {
       setFormData({
         name: '',
-        email: '',
-        phone: '',
         relationship: 'SPOUSE',
         age: '',
         gender: '',
@@ -93,79 +87,81 @@ export default function FamilyMemberDialog({
   }
 
   const validateForm = () => {
-    if (!formData.name.trim()) {
-      setError('Name is required')
-      return false
-    }
-    
-    // FIXED: Make email validation optional
-    if (formData.email && formData.email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      setError('Please enter a valid email address')
-      return false
-    }
-    
-    // FIXED: Make phone validation optional
-    if (formData.phone && formData.phone.trim() !== '' && !/^\d{10}$/.test(formData.phone)) {
-      setError('Phone number must be 10 digits')
-      return false
-    }
-    
-    if (formData.age && (parseInt(formData.age) < 0 || parseInt(formData.age) > 120)) {
-      setError('Age must be between 0 and 120')
-      return false
-    }
-    
-    return true
+  if (!formData.name.trim()) {
+    setError('Name is required')
+    return false
   }
+  
+  if (!formData.relationship) {
+    setError('Relationship is required')
+    return false
+  }
+  
+  // Age is optional - only validate if provided
+  if (formData.age) {
+    const ageNum = parseInt(formData.age)
+    if (isNaN(ageNum) || ageNum < 0 || ageNum > 120) {
+      setError('Age must be a valid number between 0 and 120')
+      return false
+    }
+  }
+  
+  // Gender is optional too
+  if (formData.gender && !['MALE', 'FEMALE', 'OTHER'].includes(formData.gender)) {
+    setError('Please select a valid gender')
+    return false
+  }
+  
+  return true
+}
 
   const handleSubmit = async () => {
-    if (!validateForm()) return
+  if (!validateForm()) return
 
-    // Check max limit for new members
-    if (!member && existingMembersCount >= 3) {
-      setError('Maximum limit of 3 family members reached')
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      const url = '/api/patient/family-members'
-      const method = member ? 'PUT' : 'POST'
-      
-      const payload = {
-        ...(member && { id: member.id }),
-        name: formData.name,
-        email: formData.email?.trim() || null, // Can be null
-        phone: formData.phone?.trim() || null, // Can be null
-        relationship: formData.relationship,
-        age: formData.age ? parseInt(formData.age) : null,
-        gender: formData.gender || null,
-        medicalNotes: formData.medicalNotes || null
-      }
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to save family member')
-      }
-
-      onSuccess()
-      onOpenChange(false)
-    } catch (error: any) {
-      console.error('Error saving family member:', error)
-      setError(error.message || 'Failed to save family member')
-    } finally {
-      setLoading(false)
-    }
+  // Check max limit for new members
+  if (!member && existingMembersCount >= 3) {
+    setError('Maximum limit of 3 family members reached')
+    return
   }
+
+  setLoading(true)
+  setError(null)
+
+  try {
+    const url = '/api/patient/family-members'
+    const method = member ? 'PUT' : 'POST'
+    
+    const payload = {
+      ...(member && { id: member.id }),
+      name: formData.name,
+      relationship: formData.relationship,
+      age: formData.age ? parseInt(formData.age) : null, // Can be null
+      gender: formData.gender || null, // Can be null
+      medicalNotes: formData.medicalNotes || null // Can be null
+      // NO email or phone - always null
+    }
+
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to save family member')
+    }
+
+    onSuccess()
+    onOpenChange(false)
+  } catch (error: any) {
+    console.error('Error saving family member:', error)
+    setError(error.message || 'Failed to save family member')
+  } finally {
+    setLoading(false)
+  }
+}
 
   const relationships = [
     { value: 'SPOUSE', label: 'Spouse' },
@@ -200,7 +196,7 @@ export default function FamilyMemberDialog({
           <DialogDescription>
             {member 
               ? 'Update the details of your family member.' 
-              : 'Add a new family member to book appointments for them. Email and phone are optional - they will use your account email for notifications.'}
+              : 'Add a new family member to book appointments for them.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -246,34 +242,7 @@ export default function FamilyMemberDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email (Optional)</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="email@example.com"
-                value={formData.email}
-                onChange={(e) => handleChange('email', e.target.value)}
-                disabled={loading}
-              />
-              <p className="text-xs text-gray-500">Optional - uses your account email if not provided</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone (Optional)</Label>
-              <Input
-                id="phone"
-                placeholder="10-digit number"
-                value={formData.phone}
-                onChange={(e) => handleChange('phone', e.target.value)}
-                disabled={loading}
-              />
-              <p className="text-xs text-gray-500">Optional - uses your account phone if not provided</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="age">Age (Optional)</Label>
+              <Label htmlFor="age">Age *</Label>
               <Input
                 id="age"
                 type="number"
@@ -283,15 +252,17 @@ export default function FamilyMemberDialog({
                 value={formData.age}
                 onChange={(e) => handleChange('age', e.target.value)}
                 disabled={loading}
+                required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="gender">Gender (Optional)</Label>
+              <Label htmlFor="gender">Gender *</Label>
               <Select
                 value={formData.gender}
                 onValueChange={(value) => handleChange('gender', value)}
                 disabled={loading}
+                required
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select gender" />
@@ -332,7 +303,7 @@ export default function FamilyMemberDialog({
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-sm text-blue-700">
                 <strong>Note:</strong> You can add {3 - existingMembersCount} more family member(s).
-                Email and phone are optional - family members will use your account contact details.
+                Family members will use your account email and phone for notifications.
               </p>
             </div>
           )}

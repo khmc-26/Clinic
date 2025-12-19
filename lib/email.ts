@@ -194,8 +194,8 @@ export async function sendAppointmentConfirmationEmail(
     }
     // 3. Default to patient email
     else {
-      recipientEmail = appointment.patient?.user?.email || session?.user?.email
-    }
+  recipientEmail = appointment.patient?.user?.email || ''
+  }
 
     if (!recipientEmail) {
       console.error('No recipient email found for appointment:', appointment.id)

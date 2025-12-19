@@ -40,13 +40,28 @@ type Appointment = {
   confirmedAt?: string
   completedAt?: string
   cancelledAt?: string
-  // FIXED: Add missing properties for merge appointments
+  
+  // Merge fields
   originalPatientName?: string
   originalPatientEmail?: string
   originalPatientPhone?: string
   requiresMerge?: boolean
+  mergeResolvedAt?: string
+  mergedToPatientId?: string
+  mergedToFamilyMemberId?: string
   bookedByUserId?: string
   bookedByPatientId?: string
+  
+  // Merged info fields
+  mergedToPatient?: {
+    id: string
+    name: string
+  } | null
+  mergedToFamilyMember?: {
+    id: string
+    name: string
+    relationship: string
+  } | null
 }
 
 export default function PatientAppointmentsPage() {
@@ -182,24 +197,9 @@ export default function PatientAppointmentsPage() {
     return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
   }
 
-  // Helper to display who the appointment is for
+  // FIXED: Enhanced appointment display logic
   const getAppointmentForDisplay = (appointment: Appointment) => {
-    // FIXED: Check for "Someone Else" bookings with originalPatientName
-    if (appointment.originalPatientName && !appointment.familyMemberId) {
-      // This is a "Someone Else" booking or merge appointment
-      return (
-        <div className="flex flex-col">
-          <div className="flex items-center gap-1">
-            <User className="h-3 w-3 text-purple-600" />
-            <span className="font-medium">{appointment.originalPatientName}</span>
-          </div>
-          <Badge variant="outline" className="mt-1 text-xs w-fit bg-purple-50 text-purple-700 border-purple-200">
-            Someone Else
-          </Badge>
-        </div>
-      )
-    }
-    
+    // 1. Family member appointments
     if (appointment.familyMember) {
       return (
         <div className="flex flex-col">
@@ -214,6 +214,40 @@ export default function PatientAppointmentsPage() {
       )
     }
     
+    // 2. Appointments with original patient name (Someone Else bookings)
+    if (appointment.originalPatientName) {
+      const isMergedToSelf = appointment.mergedToPatientId && !appointment.mergedToFamilyMemberId
+      const isMergedToFamily = appointment.mergedToFamilyMemberId
+      const isResolved = appointment.mergeResolvedAt
+      
+      return (
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1">
+            <User className="h-3 w-3 text-purple-600" />
+            <span className="font-medium">{appointment.originalPatientName}</span>
+          </div>
+          {isMergedToSelf ? (
+            <Badge variant="outline" className="mt-1 text-xs w-fit bg-blue-50 text-blue-700 border-blue-200">
+              Merged to Yourself
+            </Badge>
+          ) : isMergedToFamily ? (
+            <Badge variant="outline" className="mt-1 text-xs w-fit bg-green-50 text-green-700 border-green-200">
+              Merged to Family
+            </Badge>
+          ) : appointment.requiresMerge && !isResolved ? (
+            <Badge variant="outline" className="mt-1 text-xs w-fit bg-amber-50 text-amber-700 border-amber-200">
+              Needs Merge
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="mt-1 text-xs w-fit bg-purple-50 text-purple-700 border-purple-200">
+              Someone Else
+            </Badge>
+          )}
+        </div>
+      )
+    }
+    
+    // 3. Default: Yourself (booked for yourself)
     return (
       <div className="flex items-center gap-1">
         <User className="h-3 w-3 text-blue-600" />
@@ -239,92 +273,97 @@ export default function PatientAppointmentsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 py-4 md:py-8">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-6 md:mb-8">
           <Button
             variant="ghost"
-            className="mb-4"
+            className="mb-3 md:mb-4"
             onClick={() => router.push('/portal')}
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Portal
+            <span className="hidden sm:inline">Back to Portal</span>
+            <span className="sm:hidden">Back</span>
           </Button>
           
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">My Appointments</h1>
-              <p className="text-gray-600 mt-2">
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">My Appointments</h1>
+              <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">
                 Manage appointments for yourself and your family members
               </p>
             </div>
             
-            <Button onClick={() => router.push('/book')}>
+            <Button 
+              onClick={() => router.push('/book')} 
+              className="mt-2 md:mt-0 w-full md:w-auto"
+            >
               <Calendar className="mr-2 h-4 w-4" />
-              Book New Appointment
+              <span className="hidden sm:inline">Book New Appointment</span>
+              <span className="sm:hidden">Book Now</span>
             </Button>
           </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardContent className="pt-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+          <Card className="col-span-1">
+            <CardContent className="pt-4 md:pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Upcoming</p>
-                  <p className="text-2xl font-bold mt-1">{upcomingAppointments.length}</p>
+                  <p className="text-xs md:text-sm font-medium text-gray-600">Upcoming</p>
+                  <p className="text-xl md:text-2xl font-bold mt-1">{upcomingAppointments.length}</p>
                 </div>
-                <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                  <Calendar className="h-5 w-5 text-blue-600" />
+                <div className="h-8 w-8 md:h-10 md:w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                  <Calendar className="h-4 w-4 md:h-5 md:w-5 text-blue-600" />
                 </div>
               </div>
             </CardContent>
           </Card>
           
-          <Card>
-            <CardContent className="pt-6">
+          <Card className="col-span-1">
+            <CardContent className="pt-4 md:pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Completed</p>
-                  <p className="text-2xl font-bold mt-1">
+                  <p className="text-xs md:text-sm font-medium text-gray-600">Completed</p>
+                  <p className="text-xl md:text-2xl font-bold mt-1">
                     {pastAppointments.filter(a => a.status === 'COMPLETED').length}
                   </p>
                 </div>
-                <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
-                  <Calendar className="h-5 w-5 text-green-600" />
+                <div className="h-8 w-8 md:h-10 md:w-10 rounded-full bg-green-100 flex items-center justify-center">
+                  <Calendar className="h-4 w-4 md:h-5 md:w-5 text-green-600" />
                 </div>
               </div>
             </CardContent>
           </Card>
           
-          <Card>
-            <CardContent className="pt-6">
+          <Card className="col-span-1">
+            <CardContent className="pt-4 md:pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Cancelled</p>
-                  <p className="text-2xl font-bold mt-1">
+                  <p className="text-xs md:text-sm font-medium text-gray-600">Cancelled</p>
+                  <p className="text-xl md:text-2xl font-bold mt-1">
                     {pastAppointments.filter(a => a.status === 'CANCELLED').length}
                   </p>
                 </div>
-                <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
-                  <XCircle className="h-5 w-5 text-red-600" />
+                <div className="h-8 w-8 md:h-10 md:w-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <XCircle className="h-4 w-4 md:h-5 md:w-5 text-red-600" />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="pt-6">
+          <Card className="col-span-1">
+            <CardContent className="pt-4 md:pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Family Appointments</p>
-                  <p className="text-2xl font-bold mt-1">
+                  <p className="text-xs md:text-sm font-medium text-gray-600">Family</p>
+                  <p className="text-xl md:text-2xl font-bold mt-1">
                     {appointments.filter(a => a.familyMember).length}
                   </p>
                 </div>
-                <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
-                  <Users className="h-5 w-5 text-purple-600" />
+                <div className="h-8 w-8 md:h-10 md:w-10 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Users className="h-4 w-4 md:h-5 md:w-5 text-purple-600" />
                 </div>
               </div>
             </CardContent>
@@ -334,8 +373,8 @@ export default function PatientAppointmentsPage() {
         {/* Main Content */}
         <Card>
           <CardHeader>
-            <CardTitle>Appointment History</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-lg md:text-xl">Appointment History</CardTitle>
+            <CardDescription className="text-sm md:text-base">
               View appointments for yourself and your family members
             </CardDescription>
           </CardHeader>

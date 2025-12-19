@@ -79,13 +79,14 @@ model Patient {
 }
 
 // ==================== FAMILY MEMBER MODEL ====================
+// Remove @unique from FamilyMember.email
 model FamilyMember {
   id           String   @id @default(uuid())
-  patientId    String // The patient who owns/manages this family member
+  patientId    String
   name         String
-  email        String?  @unique
+  email        String?  // ← REMOVE @unique HERE
   phone        String?
-  relationship String // SPOUSE, CHILD, PARENT, OTHER
+  relationship String
   age          Int?
   gender       String?
   medicalNotes String?  @db.Text
@@ -97,7 +98,7 @@ model FamilyMember {
   appointments           Appointment[] @relation("familyMemberAppointments")
   mergedFromAppointments Appointment[] @relation("mergedToFamilyAppointments")
 
-  @@unique([patientId, email]) // Email must be unique per family
+  @@unique([patientId, email]) // Keep this composite unique
   @@index([patientId])
   @@index([email])
   @@index([isActive])
