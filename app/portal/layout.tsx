@@ -1,4 +1,4 @@
-// /app/portal/layout.tsx
+// /app/portal/layout.tsx - FIXED VERSION
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -33,6 +33,9 @@ const portalNavItems = [
   { href: '/portal/settings', label: 'Settings', icon: Settings },
 ]
 
+// Pages that don't require authentication
+const PUBLIC_PAGES = ['/portal/login', '/portal/verify-request']
+
 export default function PortalLayout({
   children,
 }: {
@@ -44,8 +47,11 @@ export default function PortalLayout({
   const router = useRouter()
   const { data: session, status } = useSession()
 
+  // Check if current page is public
+  const isPublicPage = PUBLIC_PAGES.includes(pathname)
+
   useEffect(() => {
-    // Fetch pending merge count
+    // Fetch pending merge count (only for authenticated users)
     const fetchMergeCount = async () => {
       try {
         const response = await fetch('/api/appointments/merge/count')
@@ -60,19 +66,21 @@ export default function PortalLayout({
       }
     }
 
-    if (session) {
+    if (session && !isPublicPage) {
       fetchMergeCount()
     }
-  }, [session])
+  }, [session, isPublicPage])
 
-  // Redirect if not authenticated
+  // Redirect if not authenticated (except for public pages)
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (status === 'unauthenticated' && !isPublicPage) {
+      console.log('🔐 Redirecting to login from:', pathname)
       router.push('/portal/login')
     }
-  }, [status, router])
+  }, [status, isPublicPage, pathname, router])
 
-  if (status === 'loading') {
+  // Show loading state while checking authentication
+  if (status === 'loading' && !isPublicPage) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -83,6 +91,38 @@ export default function PortalLayout({
     )
   }
 
+  // For public pages, render without authentication
+  if (isPublicPage) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {/* Simple header for login/verify pages */}
+        <header className="border-b bg-white">
+          <div className="px-4 h-16 flex items-center justify-between">
+            <Link href="/portal" className="flex items-center space-x-2">
+              <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+                <User className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <h1 className="font-bold">Patient Portal</h1>
+                <p className="text-xs text-gray-500">Sign in to continue</p>
+              </div>
+            </Link>
+            <Link href="/">
+              <Button variant="ghost" size="sm">
+                <ChevronLeft className="mr-2 h-4 w-4" />
+                Back to Website
+              </Button>
+            </Link>
+          </div>
+        </header>
+        <main className="max-w-7xl mx-auto px-4 py-8">
+          {children}
+        </main>
+      </div>
+    )
+  }
+
+  // For authenticated pages, check session
   if (!session) {
     return null // Will redirect in useEffect
   }
@@ -133,6 +173,17 @@ export default function PortalLayout({
                 </span>
               </Button>
             )}
+            
+            {/* Sign Out Button (Desktop) */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => signOut({ callbackUrl: '/portal/login', redirect: true })}
+              className="hidden md:flex"
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign Out
+            </Button>
             
             <Link href="/">
               <Button variant="ghost" size="sm">
@@ -241,7 +292,7 @@ export default function PortalLayout({
       {/* Main Content */}
       <main className="pt-28 md:pt-32 pb-8 px-4">
         <div className="max-w-7xl mx-auto">
-          <MergeNotificationBanner />
+          {!isPublicPage && <MergeNotificationBanner />}
           {children}
         </div>
       </main>
