@@ -98,12 +98,14 @@ export default function FamilyMemberDialog({
       return false
     }
     
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    // FIXED: Make email validation optional
+    if (formData.email && formData.email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       setError('Please enter a valid email address')
       return false
     }
     
-    if (formData.phone && !/^\d{10}$/.test(formData.phone)) {
+    // FIXED: Make phone validation optional
+    if (formData.phone && formData.phone.trim() !== '' && !/^\d{10}$/.test(formData.phone)) {
       setError('Phone number must be 10 digits')
       return false
     }
@@ -135,8 +137,8 @@ export default function FamilyMemberDialog({
       const payload = {
         ...(member && { id: member.id }),
         name: formData.name,
-        email: formData.email || null,
-        phone: formData.phone || null,
+        email: formData.email?.trim() || null, // Can be null
+        phone: formData.phone?.trim() || null, // Can be null
         relationship: formData.relationship,
         age: formData.age ? parseInt(formData.age) : null,
         gender: formData.gender || null,
@@ -198,7 +200,7 @@ export default function FamilyMemberDialog({
           <DialogDescription>
             {member 
               ? 'Update the details of your family member.' 
-              : 'Add a new family member to book appointments for them.'}
+              : 'Add a new family member to book appointments for them. Email and phone are optional - they will use your account email for notifications.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -244,7 +246,7 @@ export default function FamilyMemberDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Email (Optional)</Label>
               <Input
                 id="email"
                 type="email"
@@ -253,10 +255,11 @@ export default function FamilyMemberDialog({
                 onChange={(e) => handleChange('email', e.target.value)}
                 disabled={loading}
               />
+              <p className="text-xs text-gray-500">Optional - uses your account email if not provided</p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
+              <Label htmlFor="phone">Phone (Optional)</Label>
               <Input
                 id="phone"
                 placeholder="10-digit number"
@@ -264,12 +267,13 @@ export default function FamilyMemberDialog({
                 onChange={(e) => handleChange('phone', e.target.value)}
                 disabled={loading}
               />
+              <p className="text-xs text-gray-500">Optional - uses your account phone if not provided</p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="age">Age</Label>
+              <Label htmlFor="age">Age (Optional)</Label>
               <Input
                 id="age"
                 type="number"
@@ -283,7 +287,7 @@ export default function FamilyMemberDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="gender">Gender</Label>
+              <Label htmlFor="gender">Gender (Optional)</Label>
               <Select
                 value={formData.gender}
                 onValueChange={(value) => handleChange('gender', value)}
@@ -304,7 +308,7 @@ export default function FamilyMemberDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="medicalNotes">Medical Notes</Label>
+            <Label htmlFor="medicalNotes">Medical Notes (Optional)</Label>
             <Textarea
               id="medicalNotes"
               placeholder="Any medical conditions, allergies, or notes for doctors..."
@@ -328,7 +332,7 @@ export default function FamilyMemberDialog({
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-sm text-blue-700">
                 <strong>Note:</strong> You can add {3 - existingMembersCount} more family member(s).
-                Email is recommended for appointment confirmations.
+                Email and phone are optional - family members will use your account contact details.
               </p>
             </div>
           )}

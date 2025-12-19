@@ -5,12 +5,15 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { z } from 'zod'
 
-// Validation schema for merge resolution
 const mergeResolutionSchema = z.object({
   resolutionType: z.enum(['SELF', 'FAMILY', 'NEW']),
   familyMemberId: z.string().optional(),
+  // For NEW resolution (Add as Family Member)
   patientName: z.string().optional(),
-  patientEmail: z.string().email().optional(),
+  relationship: z.enum(['SPOUSE', 'CHILD', 'PARENT', 'OTHER']).optional(),
+  age: z.coerce.number().optional(),
+  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
+  // For keeping separate
   keepSeparate: z.boolean().optional()
 })
 
@@ -69,42 +72,52 @@ export async function POST(
       )
     }
 
-    // Verify user has permission to resolve this merge
-    const canResolve = 
-      appointment.bookedByPatientId === currentPatient.id ||
-      (appointment.familyMember && appointment.familyMember.patientId === currentPatient.id) ||
-      appointment.originalPatientEmail === session.user.email
-
-    if (!canResolve) {
-      return NextResponse.json(
-        { success: false, error: 'You do not have permission to resolve this merge' },
-        { status: 403 }
-      )
-    }
-
     // Start transaction for data consistency
     const result = await prisma.$transaction(async (tx) => {
       let mergedToPatientId: string | null = null
       let mergedToFamilyMemberId: string | null = null
       let mergeResolutionNotes = ''
+      let updatedPatientId = appointment.patientId
+      let updatedFamilyMemberId = appointment.familyMemberId
 
       switch (validatedData.resolutionType) {
         case 'SELF': {
-          // Merge to logged-in user's account
-          mergedToPatientId = currentPatient.id
-          mergeResolutionNotes = `Merged to logged-in user: ${session.user.email}`
-          
-          // Update user info if different
-          if (appointment.originalPatientName && 
-              appointment.originalPatientName !== currentPatient.user.name) {
-            await tx.user.update({
-              where: { id: currentPatient.userId },
-              data: { name: appointment.originalPatientName }
-            })
-            mergeResolutionNotes += ` (Updated name to: ${appointment.originalPatientName})`
-          }
-          break
-        }
+  // If keepSeparate is true, just mark as resolved without merging
+  if (validatedData.keepSeparate) {
+    mergedToPatientId = null
+    mergeResolutionNotes = 'Kept as separate record'
+    
+    // Just mark as resolved without changing anything
+    const updatedAppointment = await tx.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        requiresMerge: false,
+        mergeResolvedAt: new Date(),
+        mergeNotes: appointment.mergeNotes 
+          ? `${appointment.mergeNotes} | RESOLVED: ${mergeResolutionNotes}`
+          : `RESOLVED: ${mergeResolutionNotes}`
+      },
+      include: {
+        patient: {
+          include: { user: true }
+        },
+        familyMember: true
+      }
+    })
+    
+    return updatedAppointment
+  }
+  
+  // Original SELF merge logic
+  mergedToPatientId = currentPatient.id
+  mergeResolutionNotes = `Merged to logged-in user: ${session.user.email}`
+  
+  // Update appointment with user's details
+  updatedPatientId = currentPatient.id
+  
+  mergeResolutionNotes += ` (Appointment updated to match user: ${currentPatient.user.name})`
+  break
+}
 
         case 'FAMILY': {
           if (!validatedData.familyMemberId) {
@@ -126,52 +139,45 @@ export async function POST(
 
           mergedToPatientId = currentPatient.id
           mergedToFamilyMemberId = familyMember.id
+          
+          // FIXED: Update appointment to match family member (not family member to match appointment)
+          updatedPatientId = currentPatient.id
+          updatedFamilyMemberId = familyMember.id
+          
           mergeResolutionNotes = `Merged to family member: ${familyMember.name}`
           
-          // Update family member info if different
-          const updates: any = {}
-          if (appointment.originalPatientName && 
-              appointment.originalPatientName !== familyMember.name) {
-            updates.name = appointment.originalPatientName
-          }
-          if (appointment.originalPatientEmail && 
-              appointment.originalPatientEmail !== familyMember.email) {
-            updates.email = appointment.originalPatientEmail
-          }
-          if (appointment.originalPatientPhone && 
-              appointment.originalPatientPhone !== familyMember.phone) {
-            updates.phone = appointment.originalPatientPhone
-          }
-          
-          if (Object.keys(updates).length > 0) {
-            await tx.familyMember.update({
-              where: { id: familyMember.id },
-              data: updates
-            })
-            mergeResolutionNotes += ` (Updated information)`
-          }
+          // FIXED: Do NOT update family member info - appointment should match existing family member
+          mergeResolutionNotes += ` (Appointment updated to match existing family member)`
           break
         }
 
         case 'NEW': {
-          // Keep as separate patient - just mark as resolved
-          mergeResolutionNotes = 'Kept as separate patient record'
-          
-          // Update the patient record with original information
-          if (appointment.originalPatientName || appointment.originalPatientEmail) {
-            await tx.patient.update({
-              where: { id: appointment.patientId },
-              data: {
-                user: {
-                  update: {
-                    ...(appointment.originalPatientName && { name: appointment.originalPatientName }),
-                    ...(appointment.originalPatientEmail && { email: appointment.originalPatientEmail }),
-                    ...(appointment.originalPatientPhone && { phone: appointment.originalPatientPhone })
-                  }
-                }
-              }
-            })
+          // Add as new family member
+          if (!validatedData.patientName) {
+            throw new Error('Patient name is required for NEW resolution')
           }
+
+          // Create new family member with appointment info
+          const newFamilyMember = await tx.familyMember.create({
+            data: {
+              patientId: currentPatient.id,
+              name: validatedData.patientName,
+              email: appointment.originalPatientEmail || null,
+              phone: appointment.originalPatientPhone || null,
+              relationship: validatedData.relationship || 'OTHER',
+              age: validatedData.age || null,
+              gender: validatedData.gender || null,
+              medicalNotes: appointment.symptoms || null,
+              isActive: true
+            }
+          })
+
+          mergedToPatientId = currentPatient.id
+          mergedToFamilyMemberId = newFamilyMember.id
+          updatedPatientId = currentPatient.id
+          updatedFamilyMemberId = newFamilyMember.id
+          
+          mergeResolutionNotes = `Added as new family member: ${validatedData.patientName}`
           break
         }
       }
@@ -184,6 +190,16 @@ export async function POST(
           mergeResolvedAt: new Date(),
           mergedToPatientId,
           mergedToFamilyMemberId,
+          // FIXED: Update patient and family member references on appointment
+          patientId: updatedPatientId,
+          familyMemberId: updatedFamilyMemberId,
+          // FIXED: Update appointment details to match the target (user or family member)
+          ...(updatedPatientId === currentPatient.id && {
+            // If merged to user, update appointment patient details to match user
+            originalPatientName: currentPatient.user.name || appointment.originalPatientName,
+            originalPatientEmail: currentPatient.user.email,
+            originalPatientPhone: currentPatient.user.phone || appointment.originalPatientPhone
+          }),
           mergeNotes: appointment.mergeNotes 
             ? `${appointment.mergeNotes} | RESOLVED: ${mergeResolutionNotes}`
             : `RESOLVED: ${mergeResolutionNotes}`

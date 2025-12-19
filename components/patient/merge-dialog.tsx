@@ -1,4 +1,4 @@
-// /components/patient/merge-dialog.tsx
+// UPDATE the entire component with correct options
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -13,7 +13,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Loader2, Merge, User, Users, UserPlus, AlertCircle } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Loader2, Merge, User, Users, UserPlus, AlertCircle, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 
 interface FamilyMember {
@@ -40,18 +49,31 @@ export default function MergeDialog({
   const [error, setError] = useState<string | null>(null)
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
   const [resolutionType, setResolutionType] = useState<string>('')
+  const [selectedMergeOption, setSelectedMergeOption] = useState<string>('')
   const [selectedFamilyMemberId, setSelectedFamilyMemberId] = useState<string>('')
+  
+  // New family member form
+  const [newFamilyMember, setNewFamilyMember] = useState({
+    name: '',
+    relationship: 'OTHER',
+    age: '',
+    gender: '',
+    medicalNotes: ''
+  })
 
   useEffect(() => {
     if (open && appointment) {
       fetchFamilyMembers()
-      // Auto-select based on merge type
-      if (appointment.mergeNotes?.includes('logged-in user') || 
-          appointment.originalPatientEmail === appointment.bookedByPatient?.user.email) {
-        setResolutionType('SELF')
-      } else if (appointment.mergeNotes?.includes('family member')) {
-        setResolutionType('FAMILY')
-      }
+      setResolutionType('')
+      setSelectedMergeOption('')
+      setSelectedFamilyMemberId('')
+      setNewFamilyMember({
+        name: appointment.originalPatientName || '',
+        relationship: 'OTHER',
+        age: '',
+        gender: '',
+        medicalNotes: appointment.symptoms || ''
+      })
     } else {
       setResolutionType('')
       setSelectedFamilyMemberId('')
@@ -77,8 +99,18 @@ export default function MergeDialog({
       return false
     }
     
-    if (resolutionType === 'FAMILY' && !selectedFamilyMemberId) {
+    if (resolutionType === 'MERGE' && !selectedMergeOption) {
+      setError('Please select who to merge with')
+      return false
+    }
+    
+    if (resolutionType === 'MERGE' && selectedMergeOption === 'FAMILY' && !selectedFamilyMemberId) {
       setError('Please select a family member')
+      return false
+    }
+    
+    if (resolutionType === 'ADD_AS_FAMILY' && !newFamilyMember.name.trim()) {
+      setError('Please enter a name for the new family member')
       return false
     }
     
@@ -92,14 +124,38 @@ export default function MergeDialog({
     setError(null)
 
     try {
-      const payload = {
-        resolutionType,
-        ...(resolutionType === 'FAMILY' && { familyMemberId: selectedFamilyMemberId }),
-        ...(resolutionType === 'NEW' && { 
-          keepSeparate: true,
-          patientName: appointment.originalPatientName,
-          patientEmail: appointment.originalPatientEmail
-        })
+      let payload: any = {}
+
+      switch (resolutionType) {
+        case 'MERGE':
+          if (selectedMergeOption === 'SELF') {
+            payload = {
+              resolutionType: 'SELF'
+            }
+          } else if (selectedMergeOption === 'FAMILY') {
+            payload = {
+              resolutionType: 'FAMILY',
+              familyMemberId: selectedFamilyMemberId
+            }
+          }
+          break
+        
+        case 'ADD_AS_FAMILY':
+          payload = {
+            resolutionType: 'NEW',
+            patientName: newFamilyMember.name,
+            relationship: newFamilyMember.relationship,
+            age: newFamilyMember.age ? parseInt(newFamilyMember.age) : undefined,
+            gender: newFamilyMember.gender || undefined
+          }
+          break
+        
+        case 'KEEP_SEPARATE':
+          payload = {
+            resolutionType: 'SELF', // Use SELF but don't actually merge, just mark as resolved
+            keepSeparate: true
+          }
+          break
       }
 
       const response = await fetch(`/api/appointments/${appointment.id}/merge`, {
@@ -115,6 +171,7 @@ export default function MergeDialog({
       }
 
       onSuccess()
+      onOpenChange(false)
     } catch (error: any) {
       console.error('Error resolving merge:', error)
       setError(error.message || 'Failed to resolve merge')
@@ -123,32 +180,9 @@ export default function MergeDialog({
     }
   }
 
-  const getMergeDescription = () => {
-    if (appointment.mergeNotes?.includes('logged-in user')) {
-      return 'This appointment was booked with your email but a different name.'
-    }
-    if (appointment.mergeNotes?.includes('family member')) {
-      return 'This appointment matches an existing family member in your account.'
-    }
-    if (appointment.mergeNotes?.includes('existing patient')) {
-      return 'This email already exists in our system as a different patient.'
-    }
-    return 'There is a conflict between the provided information and existing records.'
-  }
-
-  const getSuggestedOption = () => {
-    if (appointment.mergeNotes?.includes('logged-in user')) {
-      return 'SELF'
-    }
-    if (appointment.mergeNotes?.includes('family member')) {
-      return 'FAMILY'
-    }
-    return ''
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center">
             <Merge className="mr-2 h-5 w-5" />
@@ -180,28 +214,22 @@ export default function MergeDialog({
                 <Badge variant="outline">{appointment.serviceType}</Badge>
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Doctor</p>
-                  <p className="font-medium">{appointment.doctor.user.name}</p>
+              <div className="space-y-2">
+                <div className="flex items-center">
+                  <User className="h-4 w-4 text-gray-500 mr-2" />
+                  <span className="font-medium">{appointment.originalPatientName}</span>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Booked By</p>
-                  <p className="font-medium">{appointment.bookedByPatient?.user.name || 'You'}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Conflict Information */}
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-            <div className="flex items-start">
-              <AlertCircle className="h-5 w-5 text-amber-600 mr-2 flex-shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-semibold text-amber-900">Conflict Detected</h4>
-                <p className="text-sm text-amber-800 mt-1">{getMergeDescription()}</p>
-                {appointment.mergeNotes && (
-                  <p className="text-xs text-amber-700 mt-2 italic">"{appointment.mergeNotes}"</p>
+                {appointment.originalPatientEmail && (
+                  <div className="flex items-center">
+                    <Mail className="h-4 w-4 text-gray-500 mr-2" />
+                    <span className="text-sm">{appointment.originalPatientEmail}</span>
+                  </div>
+                )}
+                {appointment.originalPatientPhone && (
+                  <div className="flex items-center">
+                    <Phone className="h-4 w-4 text-gray-500 mr-2" />
+                    <span className="text-sm">{appointment.originalPatientPhone}</span>
+                  </div>
                 )}
               </div>
             </div>
@@ -209,126 +237,180 @@ export default function MergeDialog({
 
           {/* Resolution Options */}
           <div className="space-y-4">
-            <h4 className="font-semibold">Select Resolution</h4>
+            <h4 className="font-semibold">Select Resolution Option</h4>
             
             <RadioGroup value={resolutionType} onValueChange={setResolutionType}>
-              {/* Option 1: Merge to Self */}
+              {/* Option 1: Merge */}
               <div className="relative">
-                <RadioGroupItem value="SELF" id="self" className="peer sr-only" />
+                <RadioGroupItem value="MERGE" id="merge" className="peer sr-only" />
                 <Label
-                  htmlFor="self"
+                  htmlFor="merge"
                   className="flex items-start justify-between rounded-lg border-2 border-gray-200 bg-white p-4 hover:bg-gray-50 hover:border-primary peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer"
                 >
                   <div className="flex items-start space-x-3">
                     <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                      <User className="h-5 w-5 text-blue-600" />
+                      <Merge className="h-5 w-5 text-blue-600" />
                     </div>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <p className="font-semibold">Merge to Myself</p>
-                        {getSuggestedOption() === 'SELF' && (
-                          <Badge className="bg-blue-100 text-blue-800 border-blue-200">Suggested</Badge>
-                        )}
-                      </div>
-                      <div className="mt-2 space-y-1 text-sm text-gray-600">
-                        <p>Associate this appointment with your account</p>
-                        <p>Update name to: <strong>{appointment.bookedByPatient?.user.name}</strong></p>
-                        <p>Use your email: <strong>{appointment.bookedByPatient?.user.email}</strong></p>
+                    <div className="flex-1">
+                      <p className="font-semibold">Merge to Existing Person</p>
+                      
+                      {resolutionType === 'MERGE' && (
+                        <div className="mt-3 space-y-3">
+                          <div className="space-y-2">
+                            <Label>Merge with:</Label>
+                            <Select value={selectedMergeOption} onValueChange={setSelectedMergeOption}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select person" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="SELF">Myself</SelectItem>
+                                <SelectItem value="FAMILY">Family Member</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          
+                          {selectedMergeOption === 'FAMILY' && (
+                            <div className="space-y-2">
+                              <Label>Select Family Member:</Label>
+                              <Select value={selectedFamilyMemberId} onValueChange={setSelectedFamilyMemberId}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select family member" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {familyMembers.map((member) => (
+                                    <SelectItem key={member.id} value={member.id}>
+                                      {member.name} ({member.relationship})
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      <div className="mt-2 text-sm text-gray-600">
+                        <p>Update this appointment to match an existing person in your account.</p>
                       </div>
                     </div>
                   </div>
-                  <div className={`h-5 w-5 rounded-full border-2 ${resolutionType === 'SELF' ? 'bg-primary border-primary' : 'border-gray-300'} mt-1`}></div>
+                  <div className={`h-5 w-5 rounded-full border-2 ${resolutionType === 'MERGE' ? 'bg-primary border-primary' : 'border-gray-300'} mt-1`}></div>
                 </Label>
               </div>
 
-              {/* Option 2: Merge to Family Member */}
+              {/* Option 2: Add as Family Member */}
               <div className="relative">
-                <RadioGroupItem value="FAMILY" id="family" className="peer sr-only" />
+                <RadioGroupItem value="ADD_AS_FAMILY" id="add-family" className="peer sr-only" />
                 <Label
-                  htmlFor="family"
+                  htmlFor="add-family"
                   className="flex items-start justify-between rounded-lg border-2 border-gray-200 bg-white p-4 hover:bg-gray-50 hover:border-primary peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer"
                 >
                   <div className="flex items-start space-x-3">
                     <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
-                      <Users className="h-5 w-5 text-green-600" />
+                      <UserPlus className="h-5 w-5 text-green-600" />
                     </div>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <p className="font-semibold">Merge to Family Member</p>
-                        {getSuggestedOption() === 'FAMILY' && (
-                          <Badge className="bg-green-100 text-green-800 border-green-200">Suggested</Badge>
-                        )}
-                      </div>
-                      <div className="mt-2 space-y-2 text-sm text-gray-600">
-                        <p>Associate this appointment with a family member</p>
-                        
-                        {familyMembers.length > 0 ? (
-                          <div className="space-y-2">
-                            <p className="font-medium">Select family member:</p>
-                            <div className="grid grid-cols-2 gap-2">
-                              {familyMembers.map((member) => (
-                                <div
-                                  key={member.id}
-                                  className={`p-2 border rounded cursor-pointer transition-colors ${
-                                    selectedFamilyMemberId === member.id
-                                      ? 'border-primary bg-primary/5'
-                                      : 'border-gray-200 hover:border-primary'
-                                  }`}
-                                  onClick={() => {
-                                    setResolutionType('FAMILY')
-                                    setSelectedFamilyMemberId(member.id)
-                                  }}
-                                >
-                                  <div className="flex items-center space-x-2">
-                                    <div className={`h-3 w-3 rounded-full border ${
-                                      selectedFamilyMemberId === member.id
-                                        ? 'border-primary bg-primary'
-                                        : 'border-gray-300'
-                                    }`}></div>
-                                    <div>
-                                      <p className="font-medium">{member.name}</p>
-                                      <p className="text-xs text-gray-500 capitalize">{member.relationship}</p>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
+                    <div className="flex-1">
+                      <p className="font-semibold">Add as Family Member</p>
+                      
+                      {resolutionType === 'ADD_AS_FAMILY' && (
+                        <div className="mt-3 space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-2">
+                              <Label>Name *</Label>
+                              <Input
+                                value={newFamilyMember.name}
+                                onChange={(e) => setNewFamilyMember(prev => ({ ...prev, name: e.target.value }))}
+                                placeholder="Full name"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Relationship</Label>
+                              <Select
+                                value={newFamilyMember.relationship}
+                                onValueChange={(value) => setNewFamilyMember(prev => ({ ...prev, relationship: value }))}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="SPOUSE">Spouse</SelectItem>
+                                  <SelectItem value="CHILD">Child</SelectItem>
+                                  <SelectItem value="PARENT">Parent</SelectItem>
+                                  <SelectItem value="OTHER">Other</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
                           </div>
-                        ) : (
-                          <p className="text-amber-600">No family members found. Add family members first.</p>
-                        )}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-2">
+                              <Label>Age</Label>
+                              <Input
+                                type="number"
+                                value={newFamilyMember.age}
+                                onChange={(e) => setNewFamilyMember(prev => ({ ...prev, age: e.target.value }))}
+                                placeholder="Age"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Gender</Label>
+                              <Select
+                                value={newFamilyMember.gender}
+                                onValueChange={(value) => setNewFamilyMember(prev => ({ ...prev, gender: value }))}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="MALE">Male</SelectItem>
+                                  <SelectItem value="FEMALE">Female</SelectItem>
+                                  <SelectItem value="OTHER">Other</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Medical Notes</Label>
+                            <Textarea
+                              value={newFamilyMember.medicalNotes}
+                              onChange={(e) => setNewFamilyMember(prev => ({ ...prev, medicalNotes: e.target.value }))}
+                              placeholder="Any medical notes..."
+                              rows={2}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="mt-2 text-sm text-gray-600">
+                        <p>Create a new family member and link this appointment to them.</p>
                       </div>
                     </div>
                   </div>
-                  <div className={`h-5 w-5 rounded-full border-2 ${resolutionType === 'FAMILY' ? 'bg-primary border-primary' : 'border-gray-300'} mt-1`}></div>
+                  <div className={`h-5 w-5 rounded-full border-2 ${resolutionType === 'ADD_AS_FAMILY' ? 'bg-primary border-primary' : 'border-gray-300'} mt-1`}></div>
                 </Label>
               </div>
 
-              {/* Option 3: Keep as Separate */}
+              {/* Option 3: Keep Separate */}
               <div className="relative">
-                <RadioGroupItem value="NEW" id="new" className="peer sr-only" />
+                <RadioGroupItem value="KEEP_SEPARATE" id="keep-separate" className="peer sr-only" />
                 <Label
-                  htmlFor="new"
+                  htmlFor="keep-separate"
                   className="flex items-start justify-between rounded-lg border-2 border-gray-200 bg-white p-4 hover:bg-gray-50 hover:border-primary peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer"
                 >
                   <div className="flex items-start space-x-3">
-                    <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
-                      <UserPlus className="h-5 w-5 text-purple-600" />
+                    <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
+                      <X className="h-5 w-5 text-gray-600" />
                     </div>
                     <div>
-                      <p className="font-semibold">Keep as Separate Patient</p>
+                      <p className="font-semibold">Keep as Separate</p>
                       <div className="mt-2 space-y-1 text-sm text-gray-600">
-                        <p>Create a new patient record with the provided information</p>
-                        <p>Name: <strong>{appointment.originalPatientName}</strong></p>
-                        <p>Email: <strong>{appointment.originalPatientEmail}</strong></p>
-                        <p>Phone: <strong>{appointment.originalPatientPhone}</strong></p>
+                        <p>Keep this appointment as a separate record with the original information.</p>
                         <p className="text-amber-600 mt-2">
-                          Note: This will create a duplicate record in the system
+                          Note: This will keep the appointment separate from your family members.
                         </p>
                       </div>
                     </div>
                   </div>
-                  <div className={`h-5 w-5 rounded-full border-2 ${resolutionType === 'NEW' ? 'bg-primary border-primary' : 'border-gray-300'} mt-1`}></div>
+                  <div className={`h-5 w-5 rounded-full border-2 ${resolutionType === 'KEEP_SEPARATE' ? 'bg-primary border-primary' : 'border-gray-300'} mt-1`}></div>
                 </Label>
               </div>
             </RadioGroup>
@@ -351,7 +433,7 @@ export default function MergeDialog({
           </Button>
           <Button 
             onClick={handleResolve} 
-            disabled={loading || !resolutionType || (resolutionType === 'FAMILY' && !selectedFamilyMemberId)}
+            disabled={loading || !resolutionType}
           >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             <Merge className="mr-2 h-4 w-4" />
@@ -362,3 +444,6 @@ export default function MergeDialog({
     </Dialog>
   )
 }
+
+// Add missing imports
+import { Mail, Phone } from 'lucide-react'

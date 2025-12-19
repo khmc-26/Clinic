@@ -101,7 +101,8 @@ export default function BookingWizardV2({ step, setStep, form }: BookingWizardV2
       const response = await fetch('/api/patient/family-members')
       if (response.ok) {
         const data = await response.json()
-        setFamilyMembers(data)
+        // FIXED: Remove isActive filtering since we're doing permanent delete
+        setFamilyMembers(Array.isArray(data) ? data : [])
       }
     } catch (error) {
       console.error('Error fetching family members:', error)
@@ -306,90 +307,88 @@ export default function BookingWizardV2({ step, setStep, form }: BookingWizardV2
       <div className="space-y-6">
         <h3 className="text-xl font-semibold mb-4">Who is this appointment for?</h3>
         
-        {/* FIX: Wrap all RadioGroupItems in a single RadioGroup */}
         <RadioGroup 
-  value={bookingFor} 
-  onValueChange={(value) => {
-    form.setValue('bookingFor', value as any)
-    
-    // Clear patient fields when not booking for SOMEONE_ELSE
-    if (value !== 'SOMEONE_ELSE') {
-      form.setValue('patientName', '')
-      form.setValue('patientEmail', '')
-      form.setValue('patientPhone', '')
-    }
-    
-    // Clear familyMemberId when not booking for FAMILY_MEMBER
-    if (value !== 'FAMILY_MEMBER') {
-      form.setValue('familyMemberId', undefined)
-    }
-  }}
-  className="space-y-4"
->
+          value={bookingFor} 
+          onValueChange={(value) => {
+            form.setValue('bookingFor', value as any)
+            
+            // Clear patient fields when not booking for SOMEONE_ELSE
+            if (value !== 'SOMEONE_ELSE') {
+              form.setValue('patientName', '')
+              form.setValue('patientEmail', '')
+              form.setValue('patientPhone', '')
+            }
+            
+            // Clear familyMemberId when not booking for FAMILY_MEMBER
+            if (value !== 'FAMILY_MEMBER') {
+              form.setValue('familyMemberId', undefined)
+            }
+          }}
+          className="space-y-4"
+        >
 
-
-{/* Myself */}
-<div className="relative">
-  <RadioGroupItem 
-    value="MYSELF" 
-    id="myself" 
-    className="peer sr-only" 
-  />
-  <Label 
-    htmlFor="myself" 
-    className="flex items-start justify-between rounded-lg border-2 border-gray-200 bg-white p-4 hover:bg-gray-50 hover:border-primary peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer"
-    onClick={() => {
-      form.setValue('bookingFor', 'MYSELF')
-      form.setValue('familyMemberId', undefined)
-    }}
-  >
-    <div className="flex items-start space-x-3">
-      <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-        <User className="h-5 w-5 text-blue-600" />
-      </div>
-      <div>
-        <div className="flex items-center space-x-2">
-          <p className="font-semibold">Myself ({session?.user?.name || 'You'})</p>
-          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">You</span>
-        </div>
-        <div className="mt-2 space-y-1 text-sm text-gray-600">
-          <p>Booking with your account: {session?.user?.email}</p>
-          <p>Phone number from your profile will be used</p>
-        </div>
-      </div>
-    </div>
-    <div className={`h-5 w-5 rounded-full border-2 ${form.getValues('bookingFor') === 'MYSELF' ? 'bg-primary border-primary' : 'border-gray-300'} mt-1`}></div>
-  </Label>
-</div>
-
-{/* Family Members */}
-{familyMembers.map((member) => (
-  <div key={member.id} className="relative">
-    <RadioGroupItem value="FAMILY_MEMBER" id={`family-${member.id}`} className="peer sr-only" />
-    <Label htmlFor={`family-${member.id}`} className="flex items-start justify-between rounded-lg border-2 border-gray-200 bg-white p-4 hover:bg-gray-50 hover:border-primary peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer" onClick={() => {
-      form.setValue('bookingFor', 'FAMILY_MEMBER')
-      form.setValue('familyMemberId', member.id)
-    }}>
-      <div className="flex items-start space-x-3">
-        <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
-          <Users className="h-5 w-5 text-green-600" />
-        </div>
-        <div>
-          <div className="flex items-center space-x-2">
-            <p className="font-semibold">{member.name}</p>
-            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded capitalize">{member.relationship}</span>
+          {/* Myself */}
+          <div className="relative">
+            <RadioGroupItem 
+              value="MYSELF" 
+              id="myself" 
+              className="peer sr-only" 
+            />
+            <Label 
+              htmlFor="myself" 
+              className="flex items-start justify-between rounded-lg border-2 border-gray-200 bg-white p-4 hover:bg-gray-50 hover:border-primary peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer"
+              onClick={() => {
+                form.setValue('bookingFor', 'MYSELF')
+                form.setValue('familyMemberId', undefined)
+              }}
+            >
+              <div className="flex items-start space-x-3">
+                <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                  <User className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <p className="font-semibold">Myself ({session?.user?.name || 'You'})</p>
+                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">You</span>
+                  </div>
+                  <div className="mt-2 space-y-1 text-sm text-gray-600">
+                    <p>Booking with your account: {session?.user?.email}</p>
+                    <p>Phone number from your profile will be used</p>
+                  </div>
+                </div>
+              </div>
+              <div className={`h-5 w-5 rounded-full border-2 ${form.getValues('bookingFor') === 'MYSELF' ? 'bg-primary border-primary' : 'border-gray-300'} mt-1`}></div>
+            </Label>
           </div>
-          <div className="mt-2 space-y-1 text-sm text-gray-600">
-            <p>Booking with your account: {session?.user?.email}</p>
-            {member.age && <p>Age: {member.age} years</p>}
-            {member.gender && <p>Gender: {member.gender}</p>}
-          </div>
-        </div>
-      </div>
-      <div className={`h-5 w-5 rounded-full border-2 ${selectedFamilyMemberId === member.id && bookingFor === 'FAMILY_MEMBER' ? 'bg-primary border-primary' : 'border-gray-300'} mt-1`}></div>
-    </Label>
-  </div>
-))}
+
+          {/* Family Members */}
+          {familyMembers.map((member) => (
+            <div key={member.id} className="relative">
+              <RadioGroupItem value="FAMILY_MEMBER" id={`family-${member.id}`} className="peer sr-only" />
+              <Label htmlFor={`family-${member.id}`} className="flex items-start justify-between rounded-lg border-2 border-gray-200 bg-white p-4 hover:bg-gray-50 hover:border-primary peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer" onClick={() => {
+                form.setValue('bookingFor', 'FAMILY_MEMBER')
+                form.setValue('familyMemberId', member.id)
+              }}>
+                <div className="flex items-start space-x-3">
+                  <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
+                    <Users className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <p className="font-semibold">{member.name}</p>
+                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded capitalize">{member.relationship}</span>
+                    </div>
+                    <div className="mt-2 space-y-1 text-sm text-gray-600">
+                      <p>Booking with your account: {session?.user?.email}</p>
+                      {member.age && <p>Age: {member.age} years</p>}
+                      {member.gender && <p>Gender: {member.gender}</p>}
+                    </div>
+                  </div>
+                </div>
+                <div className={`h-5 w-5 rounded-full border-2 ${selectedFamilyMemberId === member.id && bookingFor === 'FAMILY_MEMBER' ? 'bg-primary border-primary' : 'border-gray-300'} mt-1`}></div>
+              </Label>
+            </div>
+          ))}
 
           {/* Someone Else */}
           <div className="relative">
@@ -459,44 +458,44 @@ export default function BookingWizardV2({ step, setStep, form }: BookingWizardV2
         <div className="flex justify-between">
           <Button type="button" variant="outline" onClick={() => setStep(3)}><ChevronLeft className="mr-2 h-4 w-4" />Previous</Button>
           <Button onClick={() => {
-  console.log('=== STEP 4 VALIDATION ===')
-  console.log('Form values:', form.getValues())
-  console.log('Form errors:', form.formState.errors)
-  
-  const bookingForValue = form.getValues('bookingFor')
-  const errors = form.formState.errors
-  
-  // Validate based on booking type
-  if (!bookingForValue) {
-    alert('Please select who this appointment is for')
-    return
-  }
-  
-  if (bookingForValue === 'SOMEONE_ELSE') {
-    const { patientName, patientEmail, patientPhone } = form.getValues()
-    console.log('Someone else validation:', { patientName, patientEmail, patientPhone })
-    
-    if (!patientName || !patientEmail || !patientPhone) {
-      alert('Please fill all patient information for "Someone Else"')
-      return
-    }
-  }
-  
-  if (bookingForValue === 'FAMILY_MEMBER' && !form.getValues('familyMemberId')) {
-    alert('Please select a family member')
-    return
-  }
-  
-  if (!form.getValues('symptoms')) {
-    alert('Please describe symptoms')
-    return
-  }
-  
-  console.log('Step 4 validation passed, moving to step 5')
-  setStep(5)
-}}>
-Next: Review & Confirm <ChevronRight className="ml-2 h-4 w-4" />
-</Button>
+            console.log('=== STEP 4 VALIDATION ===')
+            console.log('Form values:', form.getValues())
+            console.log('Form errors:', form.formState.errors)
+            
+            const bookingForValue = form.getValues('bookingFor')
+            const errors = form.formState.errors
+            
+            // Validate based on booking type
+            if (!bookingForValue) {
+              alert('Please select who this appointment is for')
+              return
+            }
+            
+            if (bookingForValue === 'SOMEONE_ELSE') {
+              const { patientName, patientEmail, patientPhone } = form.getValues()
+              console.log('Someone else validation:', { patientName, patientEmail, patientPhone })
+              
+              if (!patientName || !patientEmail || !patientPhone) {
+                alert('Please fill all patient information for "Someone Else"')
+                return
+              }
+            }
+            
+            if (bookingForValue === 'FAMILY_MEMBER' && !form.getValues('familyMemberId')) {
+              alert('Please select a family member')
+              return
+            }
+            
+            if (!form.getValues('symptoms')) {
+              alert('Please describe symptoms')
+              return
+            }
+            
+            console.log('Step 4 validation passed, moving to step 5')
+            setStep(5)
+          }}>
+            Next: Review & Confirm <ChevronRight className="ml-2 h-4 w-4" />
+          </Button>
         </div>
       </div>
     )
@@ -604,65 +603,65 @@ Next: Review & Confirm <ChevronRight className="ml-2 h-4 w-4" />
         <div className="flex justify-between">
           <Button type="button" variant="outline" onClick={() => setStep(4)}><ChevronLeft className="mr-2 h-4 w-4" />Previous</Button>
           <Button onClick={() => {
-  console.log('=== FINAL SUBMIT VALIDATION ===')
-  console.log('Final form values:', form.getValues())
-  console.log('Final form errors:', form.formState.errors)
-  console.log('Agree to terms:', form.getValues('agreeToTerms'))
-  
-  if (!form.getValues('agreeToTerms')) {
-    alert('You must agree to the terms and conditions')
-    return
-  }
-  
-  // Trigger form submission
-  form.handleSubmit(handleSubmit)()
-}} disabled={loading} className="bg-green-600 hover:bg-green-700">
-  {loading ? 'Booking...' : 'Confirm Booking'}
-</Button>
+            console.log('=== FINAL SUBMIT VALIDATION ===')
+            console.log('Final form values:', form.getValues())
+            console.log('Final form errors:', form.formState.errors)
+            console.log('Agree to terms:', form.getValues('agreeToTerms'))
+            
+            if (!form.getValues('agreeToTerms')) {
+              alert('You must agree to the terms and conditions')
+              return
+            }
+            
+            // Trigger form submission
+            form.handleSubmit(handleSubmit)()
+          }} disabled={loading} className="bg-green-600 hover:bg-green-700">
+            {loading ? 'Booking...' : 'Confirm Booking'}
+          </Button>
         </div>
       </div>
     )
   }
 
- const handleSubmit = async (data: AppointmentV2FormData) => {
-  console.log('=== SUBMIT CALLED ===')
-  console.log('Form data to submit:', data)
-  console.log('Form validation errors:', form.formState.errors)
-  
-  setLoading(true)
-  try {
-    console.log('Sending request to /api/appointments/book-v2')
-    const response = await fetch('/api/appointments/book-v2', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    })
+  const handleSubmit = async (data: AppointmentV2FormData) => {
+    console.log('=== SUBMIT CALLED ===')
+    console.log('Form data to submit:', data)
+    console.log('Form validation errors:', form.formState.errors)
     
-    console.log('Response status:', response.status)
-    const result = await response.json()
-    console.log('Response data:', result)
-    
-    if (result.success) {
-      alert('✅ Appointment booked successfully!')
-      // Reset form
-      form.reset()
-      setStep(1)
-      setSelectedDoctor('')
-      setSelectedDate(undefined)
-      setSelectedTime(undefined)
-    } else {
-      alert(`❌ Error: ${result.error}`)
-      if (result.details) {
-        console.error('Validation details:', result.details)
+    setLoading(true)
+    try {
+      console.log('Sending request to /api/appointments/book-v2')
+      const response = await fetch('/api/appointments/book-v2', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      
+      console.log('Response status:', response.status)
+      const result = await response.json()
+      console.log('Response data:', result)
+      
+      if (result.success) {
+        alert('✅ Appointment booked successfully!')
+        // Reset form
+        form.reset()
+        setStep(1)
+        setSelectedDoctor('')
+        setSelectedDate(undefined)
+        setSelectedTime(undefined)
+      } else {
+        alert(`❌ Error: ${result.error}`)
+        if (result.details) {
+          console.error('Validation details:', result.details)
+        }
       }
+    } catch (error) {
+      console.error('Request failed:', error)
+      alert('❌ Failed to book appointment')
+    } finally {
+      setLoading(false)
     }
-  } catch (error) {
-    console.error('Request failed:', error)
-    alert('❌ Failed to book appointment')
-  } finally {
-    setLoading(false)
   }
-}
 
   return (
     <div>

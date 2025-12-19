@@ -31,8 +31,8 @@ export async function GET(request: NextRequest) {
 // Validation schema for family member
 const familyMemberSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
-  email: z.string().email("Invalid email address").optional().or(z.literal('')),
-  phone: z.string().regex(/^[0-9]{10}$/, "Phone must be 10 digits").optional().or(z.literal('')),
+  email: z.string().email("Invalid email address").optional().or(z.literal('')).or(z.null()),
+  phone: z.string().optional().or(z.literal('')).or(z.null()),
   relationship: z.enum(['SPOUSE', 'CHILD', 'PARENT', 'OTHER']),
   age: z.coerce.number().min(0).max(120).optional(),
   gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
@@ -74,31 +74,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check email uniqueness if provided
-    if (validatedData.email) {
-      const existingEmail = await prisma.familyMember.findFirst({
-        where: {
-          patientId: patient.id,
-          email: validatedData.email,
-          isActive: true
-        }
-      })
-
-      if (existingEmail) {
-        return NextResponse.json(
-          { error: 'Email already exists in your family members' },
-          { status: 400 }
-        )
-      }
-    }
-
+    // REMOVED: Email uniqueness check - family members share account email
+    
     // Create family member
     const familyMember = await prisma.familyMember.create({
       data: {
         patientId: patient.id,
         name: validatedData.name,
-        email: validatedData.email || null,
-        phone: validatedData.phone || null,
+        email: validatedData.email || null, // Optional - can be null
+        phone: validatedData.phone || null, // Optional - can be null
         relationship: validatedData.relationship,
         age: validatedData.age || null,
         gender: validatedData.gender || null,
@@ -112,7 +96,7 @@ export async function POST(request: NextRequest) {
     console.error('Error creating family member:', error)
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Validation failed', details: error.issues }, // Changed from error.errors
+        { error: 'Validation failed', details: error.issues },
         { status: 400 }
       )
     }
@@ -160,32 +144,15 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Family member not found' }, { status: 404 })
     }
 
-    // Check email uniqueness if updating email
-    if (updateData.email && updateData.email !== existingMember.email) {
-      const existingEmail = await prisma.familyMember.findFirst({
-        where: {
-          patientId: patient.id,
-          email: updateData.email,
-          isActive: true,
-          NOT: { id }
-        }
-      })
-
-      if (existingEmail) {
-        return NextResponse.json(
-          { error: 'Email already exists in your family members' },
-          { status: 400 }
-        )
-      }
-    }
-
+    // REMOVED: Email uniqueness check for updates
+    
     // Update family member
     const updatedMember = await prisma.familyMember.update({
       where: { id },
       data: {
         ...updateData,
-        email: updateData.email || null,
-        phone: updateData.phone || null
+        email: updateData.email || null, // Can be null
+        phone: updateData.phone || null  // Can be null
       }
     })
 
@@ -228,6 +195,16 @@ export async function DELETE(request: NextRequest) {
       where: { 
         id,
         patientId: patient.id 
+      },
+      include: {
+        appointments: {
+          where: {
+            OR: [
+              { status: 'PENDING' },
+              { status: 'CONFIRMED' }
+            ]
+          }
+        }
       }
     })
 
@@ -235,13 +212,29 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Family member not found' }, { status: 404 })
     }
 
-    // Soft delete (set isActive = false)
-    await prisma.familyMember.update({
-      where: { id },
-      data: { isActive: false }
+    // Check if family member has upcoming appointments
+    if (existingMember.appointments.length > 0) {
+      return NextResponse.json(
+        { 
+          error: 'Cannot delete family member with upcoming appointments',
+          details: {
+            appointmentCount: existingMember.appointments.length,
+            appointmentIds: existingMember.appointments.map(a => a.id)
+          }
+        },
+        { status: 400 }
+      )
+    }
+
+    // FIXED: Permanent delete (not soft delete)
+    await prisma.familyMember.delete({
+      where: { id }
     })
 
-    return NextResponse.json({ success: true, message: 'Family member deleted successfully' })
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Family member permanently deleted successfully' 
+    })
   } catch (error) {
     console.error('Error deleting family member:', error)
     return NextResponse.json(

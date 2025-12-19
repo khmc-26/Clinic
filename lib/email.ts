@@ -34,8 +34,30 @@ export async function sendAppointmentConfirmationEmail(
     // Get doctor name
     const doctorName = appointment.doctor?.user?.name || 'Dr. Kavitha Thomas'
     
-    // Use provided patientName or fallback
-    const displayPatientName = patientName || appointment.patient?.user?.name || 'Patient'
+    // FIXED: Use original patient name for "Someone Else" bookings
+    let displayPatientName = ''
+    
+    // Check for original patient name (for "Someone Else" bookings)
+    if (appointment.originalPatientName) {
+      displayPatientName = appointment.originalPatientName
+    } 
+    // Check for family member
+    else if (appointment.familyMemberId) {
+      try {
+        const familyMemberInfo = await prisma.familyMember.findUnique({
+          where: { id: appointment.familyMemberId },
+          select: { name: true }
+        })
+        displayPatientName = familyMemberInfo?.name || 'Family Member'
+      } catch (error) {
+        console.error('Error fetching family member:', error)
+        displayPatientName = 'Family Member'
+      }
+    }
+    // Use provided patientName or fallback to patient user name
+    else {
+      displayPatientName = patientName || appointment.patient?.user?.name || 'Patient'
+    }
 
     // Get family member info if applicable
     let familyMemberInfo = null
@@ -67,6 +89,7 @@ export async function sendAppointmentConfirmationEmail(
           .meet-link { background: #f0fff4; border: 1px solid #c6f6d5; border-radius: 8px; padding: 15px; margin: 20px 0; }
           .notice { background: #e8f4fd; border: 1px solid #b3d9ff; border-radius: 8px; padding: 15px; margin: 20px 0; color: #0066cc; }
           .family-member-badge { display: inline-block; background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-left: 8px; }
+          .someone-else-badge { display: inline-block; background: #8b5cf6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-left: 8px; }
         </style>
       </head>
       <body>
@@ -85,11 +108,21 @@ export async function sendAppointmentConfirmationEmail(
             : ''
           }
           
+          ${appointment.originalPatientName && !familyMemberInfo ? 
+            `<p style="color: #8b5cf6; font-weight: 600;">
+              This appointment was booked on your behalf.
+            </p>`
+            : ''
+          }
+          
           <p>Your appointment has been successfully booked. Here are your appointment details:</p>
           
           <div class="appointment-details">
             <h3>Appointment Details</h3>
-            <p><strong>Patient:</strong> ${displayPatientName}${familyMemberInfo ? ' <span class="family-member-badge">Family Member</span>' : ''}</p>
+            <p><strong>Patient:</strong> ${displayPatientName}
+            ${familyMemberInfo ? ' <span class="family-member-badge">Family Member</span>' : ''}
+            ${appointment.originalPatientName && !familyMemberInfo ? ' <span class="someone-else-badge">Someone Else</span>' : ''}
+            </p>
             <p><strong>Date & Time:</strong> ${formattedDate}</p>
             <p><strong>Appointment Type:</strong> ${appointment.appointmentType === 'ONLINE' ? 'Online Consultation' : 'In-Person Visit'}</p>
             <p><strong>Service:</strong> ${appointment.serviceType.replace(/_/g, ' ')}</p>
@@ -148,8 +181,21 @@ export async function sendAppointmentConfirmationEmail(
       doctorEmail
     ].filter((email): email is string => email !== undefined && email !== null)
 
-    // Determine recipient email
-    const recipientEmail = familyMemberInfo?.email || appointment.patient?.user?.email
+    // FIXED: Determine recipient email - priority order
+    let recipientEmail = ''
+    
+    // 1. Check for original patient email (for "Someone Else" bookings)
+    if (appointment.originalPatientEmail) {
+      recipientEmail = appointment.originalPatientEmail
+    }
+    // 2. Check for family member email
+    else if (familyMemberInfo?.email) {
+      recipientEmail = familyMemberInfo.email
+    }
+    // 3. Default to patient email
+    else {
+      recipientEmail = appointment.patient?.user?.email || session?.user?.email
+    }
 
     if (!recipientEmail) {
       console.error('No recipient email found for appointment:', appointment.id)

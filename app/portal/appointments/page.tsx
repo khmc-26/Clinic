@@ -40,6 +40,13 @@ type Appointment = {
   confirmedAt?: string
   completedAt?: string
   cancelledAt?: string
+  // FIXED: Add missing properties for merge appointments
+  originalPatientName?: string
+  originalPatientEmail?: string
+  originalPatientPhone?: string
+  requiresMerge?: boolean
+  bookedByUserId?: string
+  bookedByPatientId?: string
 }
 
 export default function PatientAppointmentsPage() {
@@ -177,6 +184,22 @@ export default function PatientAppointmentsPage() {
 
   // Helper to display who the appointment is for
   const getAppointmentForDisplay = (appointment: Appointment) => {
+    // FIXED: Check for "Someone Else" bookings with originalPatientName
+    if (appointment.originalPatientName && !appointment.familyMemberId) {
+      // This is a "Someone Else" booking or merge appointment
+      return (
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1">
+            <User className="h-3 w-3 text-purple-600" />
+            <span className="font-medium">{appointment.originalPatientName}</span>
+          </div>
+          <Badge variant="outline" className="mt-1 text-xs w-fit bg-purple-50 text-purple-700 border-purple-200">
+            Someone Else
+          </Badge>
+        </div>
+      )
+    }
+    
     if (appointment.familyMember) {
       return (
         <div className="flex flex-col">
@@ -190,6 +213,7 @@ export default function PatientAppointmentsPage() {
         </div>
       )
     }
+    
     return (
       <div className="flex items-center gap-1">
         <User className="h-3 w-3 text-blue-600" />
