@@ -1,4 +1,4 @@
-// /app/portal/page.tsx - ENHANCED VERSION
+// /app/portal/page.tsx - UPDATED VERSION (No prescriptions)
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -25,7 +25,8 @@ export default function PortalPage() {
   const [stats, setStats] = useState({
     upcomingAppointments: 0,
     familyMembers: 0,
-    mergeRequests: 0
+    mergeRequests: 0,
+    medicalEvents: 0 // Changed from prescriptionRefills
   })
   const [loading, setLoading] = useState(true)
 
@@ -54,6 +55,16 @@ export default function PortalPage() {
           }).length
         }
       }
+      
+      // Fetch medical events count (instead of prescriptions)
+      const medicalEventsRes = await fetch('/api/patient/medical-events?count=true')
+      let medicalEvents = 0
+      if (medicalEventsRes.ok) {
+        const medicalEventsData = await medicalEventsRes.json()
+        if (medicalEventsData.success && medicalEventsData.events) {
+          medicalEvents = medicalEventsData.events.length
+        }
+      }
 
       // Fetch family members count
       const familyRes = await fetch('/api/patient/family-members')
@@ -76,7 +87,8 @@ export default function PortalPage() {
       setStats({
         upcomingAppointments,
         familyMembers,
-        mergeRequests
+        mergeRequests,
+        medicalEvents
       })
     } catch (error) {
       console.error('Error fetching dashboard stats:', error)
@@ -235,8 +247,8 @@ export default function PortalPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-500">Medical Records</p>
-                    <p className="text-3xl font-bold mt-1">0</p>
-                    <p className="text-xs text-gray-500 mt-1">No records yet</p>
+                    <p className="text-3xl font-bold mt-1">{stats.medicalEvents}</p>
+                    <p className="text-xs text-gray-500 mt-1">Total events</p>
                   </div>
                   <div className="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center">
                     <FileText className="h-6 w-6 text-amber-600" />

@@ -149,3 +149,33 @@ function getEventTypeColor(eventType: string): string {
   
   return colors[eventType] || '#6B7280' // Default gray
 }
+
+// POST: Create a new medical event - DISABLED FOR PATIENTS
+export async function POST(request: NextRequest) {
+  return NextResponse.json(
+    { 
+      error: 'Patient cannot create medical events. Events are created automatically by doctors.' 
+    },
+    { status: 403 }
+  )
+}
+
+// PUT: Update medical event - DISABLED FOR PATIENTS
+export async function PUT(request: NextRequest) {
+  return NextResponse.json(
+    { 
+      error: 'Patient cannot modify medical events. Please contact your doctor for corrections.' 
+    },
+    { status: 403 }
+  )
+}
+
+// DELETE: Delete medical event - DISABLED FOR PATIENTS
+export async function DELETE(request: NextRequest) {
+  return NextResponse.json(
+    { 
+      error: 'Patient cannot delete medical events. Please contact your doctor for corrections.' 
+    },
+    { status: 403 }
+  )
+}

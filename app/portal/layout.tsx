@@ -1,4 +1,4 @@
-// /app/portal/layout.tsx - FIXED VERSION
+// /app/portal/layout.tsx - UPDATED VERSION (Removed Prescriptions)
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -16,10 +16,10 @@ import {
   LogOut,
   Home,
   User,
-  AlertCircle,
   History,
   ShieldAlert,
-  ChevronLeft
+  ChevronLeft,
+  Construction
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import MergeNotificationBanner from '@/components/patient/merge-notification-banner'
@@ -31,6 +31,8 @@ const portalNavItems = [
   { href: '/portal/medical-history', label: 'Medical History', icon: History },
   { href: '/portal/merge', label: 'Merge Requests', icon: ShieldAlert, badge: 'merge' },
   { href: '/portal/settings', label: 'Settings', icon: Settings },
+  // REMOVED: Prescriptions link
+  // { href: '/portal/prescriptions', label: 'Prescriptions', icon: Pill, disabled: true },
 ]
 
 // Pages that don't require authentication
@@ -166,7 +168,7 @@ export default function PortalLayout({
                 className="relative bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
                 onClick={() => router.push('/portal/merge')}
               >
-                <AlertCircle className="mr-2 h-4 w-4" />
+                <ShieldAlert className="mr-2 h-4 w-4" />
                 Merge Requests
                 <span className="ml-2 h-5 w-5 rounded-full bg-amber-500 text-white text-xs flex items-center justify-center">
                   {mergeCount}
@@ -274,6 +276,16 @@ export default function PortalLayout({
                   </Link>
                 )
               })}
+              
+              {/* Optional: Coming Soon Features Section */}
+              <div className="pt-4 border-t">
+                <div className="px-4 py-3 rounded-lg text-sm font-medium text-gray-500 bg-gray-50">
+                  <div className="flex items-center space-x-3">
+                    <Construction className="h-5 w-5" />
+                    <span>Prescriptions (Coming Soon)</span>
+                  </div>
+                </div>
+              </div>
               
               <div className="pt-4 border-t">
                 <button
